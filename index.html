@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>BlinkBrief</title>
+    <meta name="description" content="A reading coach for dyslexic learners that notices when you get stuck, helps in the way that fits, and fades as you grow." />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Lexend:wght@400;500;600&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="css/style.css" />
+    <link rel="stylesheet" href="css/gaze.css" />
+    <link rel="stylesheet" href="css/theme.css" />
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to content</a>
+    <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+      <defs>
+        <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2.5"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></symbol>
+        <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3"/></symbol>
+        <symbol id="i-cam" viewBox="0 0 24 24"><rect x="3" y="7" width="14" height="10" rx="2.5"/><path d="M17 11l4-2.5v7L17 13"/></symbol>
+        <symbol id="i-chat" viewBox="0 0 24 24"><path d="M4 5h16v11H9l-4 3.5V16H4z"/></symbol>
+        <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></symbol>
+        <symbol id="i-heart" viewBox="0 0 24 24"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.4A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/></symbol>
+        <symbol id="i-book" viewBox="0 0 24 24"><path d="M4 5.5C7 4.5 10 5 12 7c2-2 5-2.5 8-1.5V19c-3-1-6-.5-8 1.5C10 18.5 7 18 4 19z"/><path d="M12 7v13"/></symbol>
+        <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3v5M12 16v5M3 12h5M16 12h5M6 6l3 3M15 15l3 3M18 6l-3 3M9 15l-3 3"/></symbol>
+        <symbol id="i-ear" viewBox="0 0 24 24"><path d="M8 9a4 4 0 1 1 8 0c0 2.5-2 3-2 5.5a2.5 2.5 0 0 1-5 0"/><path d="M12 8.5a1.5 1.5 0 0 1 1.5 1.5"/></symbol>
+        <symbol id="i-sprout" viewBox="0 0 24 24"><path d="M12 21v-8M12 13c0-4-3-6-7-6 0 4 3 6 7 6zM12 15c0-3 2-5 6-5 0 3-2 5-6 5z"/></symbol>
+      </defs>
+    </svg>
+    <header class="brand">
+      <a href="#" class="brand-link" id="brand-home" aria-label="BlinkBrief home">
+        <svg class="logo" viewBox="0 0 44 30" aria-hidden="true"><path class="logo-eye" d="M3 15C10 4 34 4 41 15C34 26 10 26 3 15Z"/><circle class="logo-pupil" cx="22" cy="15" r="5.2"/><circle cx="23.9" cy="13.1" r="1.4" fill="#fff"/></svg>
+        <span>BlinkBrief</span>
+      </a>
+    </header>
+    <main id="main">
+
+      <!-- FIRST LAUNCH: privacy and mode. Nothing is recorded before this is accepted. -->
+      <div id="consent-view" hidden>
+        <header class="hero">
+          <p class="eyebrow">AI for Education &middot; Prototype</p>
+          <h1>Before we start</h1>
+          <p class="lead">BlinkBrief is a reading helper. Here is what it does with your reading, in plain words.</p>
+        </header>
+        <ul class="privacy-list">
+          <li><svg class="ico"><use href="#i-lock"/></svg><div><strong>Your reading stays on this device.</strong> BlinkBrief saves which words were hard, how much help you used, and your settings. It never saves audio, video or what you said.</div></li>
+          <li><svg class="ico"><use href="#i-mic"/></svg><div><strong>Microphone (read-aloud mode).</strong> It starts only when you start reading, shows a &ldquo;Microphone on&rdquo; label, and stops when you press Pause or Finish. Your browser does the listening: Chrome can do it on this device when it has the language pack, otherwise it may use an online speech service. BlinkBrief tells you which one is in use. Silent mode never uses the microphone.</div></li>
+          <li><svg class="ico"><use href="#i-cam"/></svg><div><strong>Camera (optional gaze).</strong> Off unless you turn it on. The video is worked out inside your browser by WebGazer and is never uploaded. The first time, it needs the internet to load the face-tracking code.</div></li>
+          <li><svg class="ico"><use href="#i-chat"/></svg><div><strong>Help text.</strong> If the optional language-model backend is switched on, only the word and its sentence are sent to it. Never audio, video or your name.</div></li>
+          <li><svg class="ico"><use href="#i-sliders"/></svg><div><strong>You are in control.</strong> You can pause, change how eager the help is, or delete everything at any time.</div></li>
+          <li><svg class="ico"><use href="#i-heart"/></svg><div>If you are a child, please read this with a grown-up. BlinkBrief is not a test and does not diagnose dyslexia.</div></li>
+        </ul>
+        <fieldset class="modes">
+          <legend>How would you like to read?</legend>
+          <label><input type="radio" name="mode-consent" value="aloud" /> <span><strong>Read aloud</strong> (most accurate). BlinkBrief listens as you read.</span></label>
+          <label><input type="radio" name="mode-consent" value="silent" checked /> <span><strong>Silent</strong>. Move your mouse or finger along the words.</span></label>
+          <label><input type="radio" name="mode-consent" value="unsure" /> <span><strong>Not sure.</strong> Start silent. You can switch any time.</span></label>
+        </fieldset>
+        <label class="check"><input type="checkbox" id="gaze-consent" /> <span>Also try webcam gaze (optional and experimental, needs good light)</span></label>
+        <p><button type="button" class="btn primary" id="consent-btn">I understand</button></p>
+      </div>
+
+      <!-- HOME VIEW -->
+      <div id="home-view" hidden>
+        <header class="hero">
+          <div class="hero-copy">
+            <h1>Read at your own pace. Help arrives when a word gets in the way.</h1>
+            <p class="lead">BlinkBrief notices when you get stuck, helps in the way that fits, and slowly steps back as reading gets easier.</p>
+            <div class="hero-actions">
+              <a class="btn primary" href="#start-title" id="hero-start">Start reading</a>
+              <button type="button" class="btn secondary" id="nav-progress">My progress</button>
+              <button type="button" class="btn ghost" id="nav-privacy">Privacy and settings</button>
+            </div>
+          </div>
+          <div class="demo" id="hero-demo">
+            <p class="vh">An example: while reading, the word &ldquo;thorough&rdquo; gets a faint underline. Hovering it opens a small help card with the word split into parts. In later sessions the underline gets fainter, then disappears.</p>
+            <div class="demo-card" aria-hidden="true">
+              <div class="demo-top"><span class="demo-chip" id="demo-chip">Session 1</span><button type="button" class="linkish" id="demo-replay" tabindex="-1">Replay</button></div>
+              <p class="demo-text" id="demo-text"></p>
+              <span class="demo-hl" id="demo-hl"></span>
+              <div class="demo-bubble" id="demo-bubble">
+                <strong>thorough</strong>
+                <span class="demo-split">thor &middot; ough</span>
+                <span class="demo-btns"><b>Hear it</b><i>What it means</i></span>
+              </div>
+            </div>
+            <div class="demo-fade" id="demo-fade" aria-hidden="true">
+              <span><em class="u1">thorough</em><small>Session 1</small></span>
+              <span><em class="u2">thorough</em><small>Session 3</small></span>
+              <span><em class="u3">thorough</em><small>Session 5</small></span>
+            </div>
+          </div>
+        </header>
+
+        <section aria-labelledby="how-title" class="how">
+          <h2 id="how-title">How it works</h2>
+          <ol class="steps">
+            <li><svg class="ico"><use href="#i-book"/></svg><strong>Read</strong>Read any text at your own pace. Nothing pops up unless you ask.</li>
+            <li><svg class="ico"><use href="#i-spark"/></svg><strong>Notice</strong>A faint underline appears under a word you may be stuck on.</li>
+            <li><svg class="ico"><use href="#i-ear"/></svg><strong>Get help</strong>Hover on it to hear it, see what it means, or make the sentence easier.</li>
+            <li><svg class="ico"><use href="#i-sprout"/></svg><strong>Grow</strong>As words get easier, help gets quieter, and you can see how much less you need.</li>
+          </ol>
+        </section>
+
+        <section aria-labelledby="start-title">
+          <h2 id="start-title">Start reading</h2>
+          <label for="text-input">Paste your text</label>
+          <textarea id="text-input" rows="8" placeholder="Paste a paragraph or two here..."></textarea>
+          <div class="actions">
+            <button type="button" id="upload-btn" class="btn secondary">Upload a file (PDF, EPUB or text)</button>
+            <input type="file" id="file-input" accept=".txt,.md,.pdf,.epub,text/plain,application/pdf,application/epub+zip" hidden />
+            <button type="button" id="sample-btn" class="btn secondary">Use a sample text</button>
+          </div>
+          <fieldset class="modes compact">
+            <legend>Reading mode</legend>
+            <label><input type="radio" name="mode-home" value="aloud" /> Read aloud</label>
+            <label><input type="radio" name="mode-home" value="silent" /> Silent</label>
+            <label class="check"><input type="checkbox" id="gaze-home" /> Webcam gaze (optional)</label>
+          </fieldset>
+          <p id="status" class="status" role="status"></p>
+          <button type="button" id="start-btn" class="btn primary">Start reading</button>
+        </section>
+
+        <section class="note" id="privacy-note">
+          <h2>Your privacy</h2>
+          <p>
+            The text you paste or upload stays in your browser. Audio and video are never saved or uploaded.
+            BlinkBrief keeps only which words were hard, how much help you used and your settings, on this device.
+            <button type="button" class="linkish" id="home-delete">Delete all my data</button>
+          </p>
+          <p class="small" id="backend-note"></p>
+        </section>
+
+        <footer>
+          <p>BlinkBrief is a prototype reading helper. It does not diagnose dyslexia and does not replace specialist teaching. The cause rules and fading thresholds are hypotheses that have not been tested with learners.</p>
+        </footer>
+      </div>
+
+      <!-- READER VIEW -->
+      <div id="reader-view" hidden>
+        <div class="reader-bar">
+          <button type="button" id="back-btn" class="btn secondary">Finish</button>
+          <h2 id="reader-title"></h2>
+          <div class="indicators" aria-live="polite">
+            <span id="ind-mic" class="pill live" hidden></span>
+            <span id="ind-cam" class="pill live" hidden>&#9679; Camera on</span>
+            <span id="ind-sim" class="pill sim" hidden>Simulated signal (demo)</span>
+          </div>
+        </div>
+
+        <div class="toolbar" role="toolbar" aria-label="Reading controls">
+          <button type="button" id="pause-btn" class="btn small secondary" aria-pressed="false">Pause</button>
+          <div class="seg" role="group" aria-label="Reading mode">
+            <button type="button" id="mode-aloud" aria-pressed="false">Read aloud</button>
+            <button type="button" id="mode-silent" aria-pressed="true">Silent</button>
+          </div>
+          <label class="inline small-label">Help sensitivity <input type="range" id="sens" min="0" max="1" step="0.05" value="0.5" aria-label="Help sensitivity: calmer on the left, more eager on the right" /></label>
+          <span class="size" role="group" aria-label="Text size">
+            <button type="button" id="font-minus" class="btn small secondary" aria-label="Smaller text">A&minus;</button>
+            <button type="button" id="font-plus" class="btn small secondary" aria-label="Larger text">A+</button>
+          </span>
+          <button type="button" id="gaze-toggle" class="btn small secondary" aria-pressed="false">Webcam gaze</button>
+          <span id="gaze-tools" hidden>
+            <button type="button" id="gaze-recal" class="btn small secondary">Recalibrate</button>
+            <button type="button" id="gaze-cam-btn" class="btn small secondary" aria-pressed="false">Camera view</button>
+            <span id="gaze-status" class="small" role="status"></span>
+          </span>
+          <button type="button" id="sim-btn" class="btn small secondary" title="A scripted reading that shows the help without a microphone">Simulated read-aloud (demo)</button>
+        </div>
+
+        <p id="live-status" class="status" role="status"></p>
+        <article id="reading-view" tabindex="0" aria-label="Reading passage. Use the arrow keys to move between words and Enter to open help."></article>
+        <p id="sr-current" class="vh" aria-live="polite"></p>
+        <p class="small tip">Tip: click or tap any word to get help with it. Use the arrow keys to move word by word and Enter to open help.</p>
+      </div>
+
+      <!-- END-OF-SESSION SUMMARY -->
+      <div id="summary-view" hidden>
+        <h2>Nice reading.</h2>
+        <div id="summary-body"></div>
+      </div>
+
+      <!-- PROGRESS VIEW -->
+      <div id="progress-view" hidden>
+        <div class="reader-bar"><button type="button" class="btn secondary" data-go="home">&larr; Back</button><h2>My progress</h2></div>
+        <div id="progress-body"></div>
+      </div>
+
+      <!-- PRACTICE VIEW -->
+      <div id="practice-view" hidden>
+        <div class="reader-bar"><button type="button" class="btn secondary" data-go="home">&larr; Back</button><h2>Practice round</h2></div>
+        <div id="practice-body" class="practice"></div>
+      </div>
+    </main>
+
+    <!-- Help bubble: a small corner card that waits until you ask -->
+    <aside id="help-bubble" role="dialog" aria-labelledby="hb-word" hidden>
+      <div class="hb-head"><strong id="hb-word"></strong><button type="button" id="hb-close" aria-label="Close help">&times;</button></div>
+      <p id="hb-split" class="hb-split"></p>
+      <p id="hb-hint" class="hb-hint"></p>
+      <div id="hb-actions" class="hb-actions"></div>
+      <div id="hb-out" class="hb-out" role="status" aria-live="polite"></div>
+      <p id="hb-stage" class="small" hidden></p>
+    </aside>
+
+    <script src="lib/pdf.min.js"></script>
+    <script src="lib/pdf.worker.min.js"></script>
+    <script src="lib/jszip.min.js"></script>
+    <script src="data/common-words.js"></script>
+    <script src="data/passages.js"></script>
+    <script src="data/glossary.js"></script>
+    <script src="js/textproc.js"></script>
+    <script src="js/struggle.js"></script>
+    <script src="js/session.js"></script>
+    <script src="js/speech.js"></script>
+    <script src="js/store.js"></script>
+    <script src="js/api.js"></script>
+    <script src="js/demo.js"></script>
+    <script src="js/help.js"></script>
+    <script src="js/gaze.js"></script>
+    <script src="js/reader.js"></script>
+    <script src="js/progress.js"></script>
+    <script src="js/practice.js"></script>
+    <script src="js/extract.js"></script>
+    <script src="js/home.js"></script>
+    <script src="js/hero.js"></script>
+    <script src="js/app.js"></script>
+  </body>
+</html>

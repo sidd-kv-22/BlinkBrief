@@ -1,0 +1,782 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BlinkBrief – gaze to word</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lexend:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/webgazer@3.3.0/dist/webgazer.js"></script>
+<style>
+  :root {
+    --ground: #eef1ee;
+    --paper: #fbfcfb;
+    --ink: #1c2a33;
+    --muted: #5b6b75;
+    --line: #cdd6d2;
+    --gaze: #0f766e;
+    --gaze-wash: #c9ece6;
+    --stall: #b45309;
+    --stall-wash: #fde7c4;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    font-family: 'Lexend', 'OpenDyslexic', Verdana, sans-serif;
+    background: var(--ground);
+    color: var(--ink);
+    letter-spacing: 0.04em;
+  }
+  button {
+    font: inherit; font-size: 15px; letter-spacing: 0.02em;
+    padding: 10px 16px; border-radius: 8px; cursor: pointer;
+    border: 1.5px solid var(--ink); background: transparent; color: var(--ink);
+  }
+  button:hover { background: #e2e8e5; }
+  button:focus-visible, .cal-pt:focus-visible { outline: 3px solid var(--gaze); outline-offset: 2px; }
+  button.primary { background: var(--ink); color: #fff; }
+  button.primary:hover { background: #2c4150; }
+
+  /* ---------- layout ---------- */
+  .app { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 28px; max-width: 1180px; margin: 0 auto; padding: 28px 24px 60px; }
+  @media (max-width: 860px) { .app { grid-template-columns: 1fr; } }
+  h1 { font-size: 22px; font-weight: 600; margin: 0 0 4px; }
+  .sub { color: var(--muted); font-size: 14px; margin: 0 0 22px; letter-spacing: 0.02em; }
+
+  /* ---------- reading surface ---------- */
+  .page { background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 34px 38px; }
+  .para { font-size: 22px; line-height: 2.5; margin: 0 0 30px; max-width: 62ch; }
+  .para:last-child { margin-bottom: 0; }
+  .w { padding: 3px 5px; border-radius: 5px; cursor: pointer; }
+  .w.looked { background: var(--gaze-wash); box-shadow: inset 0 -3px 0 var(--gaze); }
+  .w.stalled { background: var(--stall-wash); box-shadow: inset 0 -3px 0 var(--stall); }
+  .custom { margin-top: 22px; font-size: 14px; color: var(--muted); }
+  .custom textarea { width: 100%; min-height: 90px; margin: 10px 0; padding: 10px; font: inherit; font-size: 15px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); color: var(--ink); }
+
+  /* ---------- side panel ---------- */
+  .panel { position: sticky; top: 20px; align-self: start; display: flex; flex-direction: column; gap: 18px; }
+  .card { background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; }
+  .card h2 { font-size: 14px; font-weight: 500; color: var(--muted); margin: 0 0 8px; letter-spacing: 0.02em; }
+  #cur-word { font-size: 34px; font-weight: 600; min-height: 1.4em; overflow-wrap: anywhere; }
+  #cur-word.none { color: var(--line); }
+  .bar { height: 8px; background: var(--ground); border-radius: 4px; overflow: hidden; margin: 10px 0 6px; }
+  .bar > i { display: block; height: 100%; width: 0; background: var(--gaze); }
+  .bar.stalled > i { background: var(--stall); }
+  .meta { font-size: 13px; color: var(--muted); display: flex; justify-content: space-between; }
+  #status { font-size: 14px; }
+  #status.bad { color: var(--stall); font-weight: 500; }
+  #trail { list-style: none; margin: 0; padding: 0; font-size: 15px; }
+  #trail li { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid var(--ground); }
+  #trail li:last-child { border-bottom: 0; }
+  #trail span { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .controls { display: flex; flex-wrap: wrap; gap: 8px; }
+  .controls button { padding: 8px 12px; font-size: 13px; }
+  .controls button[aria-pressed="true"] { background: var(--ink); color: #fff; }
+
+  /* ---------- overlays ---------- */
+  .overlay { position: fixed; inset: 0; z-index: 1000; background: rgba(238, 241, 238, 0.97); display: none; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 24px; }
+  .overlay.on { display: flex; }
+  .overlay h2 { font-size: 26px; margin: 0 0 10px; }
+  .overlay p { max-width: 46ch; line-height: 1.7; color: var(--muted); margin: 0 0 18px; }
+  .tips { text-align: left; max-width: 46ch; line-height: 1.8; color: var(--muted); font-size: 15px; margin: 0 0 22px; padding-left: 20px; }
+
+  .cal-pt {
+    position: fixed; width: 38px; height: 38px; border-radius: 50%; padding: 0;
+    transform: translate(-50%, -50%); border: 2px solid var(--ink);
+    background: radial-gradient(circle, var(--ink) 0 4px, rgba(15,118,110, var(--p, 0.08)) 5px);
+  }
+  .cal-pt.done { border-color: var(--gaze); background: var(--gaze); opacity: 0.45; pointer-events: none; }
+  #cal-msg { position: fixed; left: 50%; top: 30%; transform: translate(-50%, -50%); }
+  #cal-msg h2 { font-size: 22px; margin-bottom: 6px; }
+  #cal-msg p { margin-bottom: 6px; }
+  #check-dot { position: fixed; width: 22px; height: 22px; margin: -11px 0 0 -11px; border-radius: 50%; background: var(--stall); display: none; }
+
+  /* ---------- gaze dot / camera ---------- */
+  #gaze-dot { position: fixed; z-index: 2000; width: 16px; height: 16px; margin: -8px 0 0 -8px; border-radius: 50%; background: rgba(15,118,110,0.55); border: 2px solid var(--gaze); pointer-events: none; display: none; }
+  /* Camera preview: WebGazer pins it to the top-left corner by default, which hides a calibration dot.
+     During setup it sits in the empty gap below screen centre; while reading it moves to the bottom-right. */
+  #webgazerVideoContainer {
+    position: fixed !important; z-index: 1500 !important;
+    top: 70% !important; left: 50% !important; right: auto !important; bottom: auto !important;
+    transform: translate(-50%, -50%) scale(0.5); transform-origin: center;
+  }
+  body:not(.setup) #webgazerVideoContainer {
+    top: auto !important; left: auto !important; right: 12px !important; bottom: 12px !important;
+    transform: scale(0.5); transform-origin: bottom right;
+  }
+
+
+  /* ---------- word help card ---------- */
+  #wh-empty { font-size: 14px; color: var(--muted); line-height: 1.6; letter-spacing: 0.02em; }
+  #wh-body[hidden] { display: none; }
+  .wh-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; margin-bottom: 4px; }
+  #wh-word { font-size: 24px; font-weight: 600; overflow-wrap: anywhere; }
+  #wh-phon { font-size: 15px; color: var(--muted); }
+  #wh-pos { display: inline-block; font-size: 12px; color: var(--gaze); background: var(--gaze-wash); border-radius: 999px; padding: 2px 10px; margin: 6px 0 4px; }
+  #wh-pos:empty { display: none; }
+  .wh-label { font-size: 12px; color: var(--muted); margin: 12px 0 2px; letter-spacing: 0.02em; }
+  #wh-def, #wh-ex { margin: 0; font-size: 15px; line-height: 1.7; letter-spacing: 0.02em; }
+  #wh-ex { font-style: italic; border-left: 3px solid var(--gaze-wash); padding-left: 10px; }
+  #wh-note { font-size: 12px; color: var(--muted); margin: 10px 0 0; }
+  #btn-speak { display: inline-flex; align-items: center; gap: 8px; margin-top: 8px; padding: 8px 14px; font-size: 14px; }
+  #btn-speak.playing { background: var(--gaze); border-color: var(--gaze); color: #fff; }
+  #btn-speak svg { width: 18px; height: 18px; fill: currentColor; }
+
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+
+<!-- Intro -->
+<div id="ov-intro" class="overlay on">
+  <h2>BlinkBrief gaze tracker</h2>
+  <p>This page uses your webcam to estimate which word you are looking at. Video stays in your browser and is never uploaded.</p>
+  <ul class="tips">
+    <li>Sit about an arm's length from the screen.</li>
+    <li>Face a light source, not a window behind you.</li>
+    <li>Keep your head fairly still once calibration starts.</li>
+  </ul>
+  <button class="primary" id="btn-start">Turn on camera</button>
+</div>
+
+<!-- Loading -->
+<div id="ov-loading" class="overlay">
+  <h2>Starting the camera</h2>
+  <p id="loading-msg">Allow camera access when your browser asks. The first start can take a few seconds.</p>
+</div>
+
+<!-- Calibration -->
+<div id="ov-cal" class="overlay">
+  <div id="cal-msg">
+    <h2>Calibrate</h2>
+    <p>Look at each dot and click it 5 times. Keep your eyes on the dot while you click.</p>
+    <p id="cal-count"></p>
+  </div>
+</div>
+
+<!-- Accuracy check -->
+<div id="ov-check" class="overlay">
+  <div id="check-msg">
+    <h2 id="check-title">Accuracy check</h2>
+    <p id="check-text">Look at the orange dot without moving your mouse.</p>
+    <div class="controls" id="check-actions" style="justify-content:center; display:none;">
+      <button id="btn-recal">Calibrate again</button>
+      <button id="btn-go" class="primary">Start reading</button>
+    </div>
+  </div>
+</div>
+<div id="check-dot"></div>
+
+<div id="gaze-dot"></div>
+
+<div class="app">
+  <main>
+    <h1>Read naturally</h1>
+    <p class="sub">The word you are looking at gets a teal underline. After 2 seconds on one word it turns amber, and you hear it spoken with its meaning and an example. You can also double-click any word.</p>
+    <div class="page" id="page"></div>
+
+    <details class="custom">
+      <summary>Use your own text</summary>
+      <textarea id="custom-text" placeholder="Paste a paragraph here"></textarea>
+      <button id="btn-custom">Use this text</button>
+    </details>
+  </main>
+
+  <aside class="panel">
+    <section class="card" aria-live="polite">
+      <h2>Looking at</h2>
+      <div id="cur-word" class="none">–</div>
+      <div class="bar" id="dwell-bar"><i id="dwell-fill"></i></div>
+      <div class="meta"><span id="dwell-ms">0.0 s</span><span id="word-idx"></span></div>
+    </section>
+
+    <section class="card" id="word-help" aria-live="polite">
+      <h2>Word help</h2>
+      <div id="wh-empty">Rest your eyes on a word for 2 seconds, or double-click any word, to hear it and see what it means.</div>
+      <div id="wh-body" hidden>
+        <div class="wh-head"><span id="wh-word"></span><span id="wh-phon"></span></div>
+        <button id="btn-speak" type="button" aria-label="Hear the word again">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10v4h4l5 4V6L7 10H3zm13.5 2a4.5 4.5 0 0 0-2.5-4v8a4.5 4.5 0 0 0 2.5-4zM14 3.2v2.1a7 7 0 0 1 0 13.4v2.1a9 9 0 0 0 0-17.6z"/></svg>
+          <span>Hear it</span>
+        </button>
+        <div><span id="wh-pos"></span></div>
+        <div class="wh-label">Meaning</div>
+        <p id="wh-def"></p>
+        <div class="wh-label">Example</div>
+        <p id="wh-ex"></p>
+        <p id="wh-note"></p>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Tracking</h2>
+      <div id="status">Not started</div>
+    </section>
+
+    <section class="card">
+      <h2>Recent words</h2>
+      <ul id="trail"><li style="color:var(--muted)">Nothing yet</li></ul>
+    </section>
+
+    <section class="card">
+      <h2>Controls</h2>
+      <div class="controls">
+        <button id="btn-dot" aria-pressed="true">Gaze dot</button>
+        <button id="btn-cam" aria-pressed="false">Camera</button>
+        <button id="btn-voice" aria-pressed="true">Auto voice</button>
+        <button id="btn-pause" aria-pressed="false">Pause</button>
+        <button id="btn-recal2">Recalibrate</button>
+      </div>
+      <p class="meta" style="margin:12px 0 0; display:block; line-height:1.6;">Tip: if the underline lags behind your eyes, click the word you are looking at. Each click teaches the tracker.</p>
+    </section>
+  </aside>
+</div>
+
+<script>
+/* =========================================================
+   BlinkBrief gaze tracker
+   Turns WebGazer's raw (x, y) estimates into "which word".
+   ========================================================= */
+const CONFIG = {
+  smoothing: 0.2,        // 0..1, higher = faster but jumpier
+  tolerancePx: 48,       // how far outside a word's box the gaze may be and still count
+  hysteresisPx: 14,      // current word is kept unless another is this much closer
+  confirmMs: 120,        // new word must win this long before we switch
+  leaveGraceMs: 450,     // keep the last word this long after gaze leaves all words
+  stallMs: 2000,         // dwell on one word before it counts as a stall
+  clicksPerPoint: 5,
+  noFaceMs: 1200,
+  diagnoseUrl: null      // e.g. '/diagnose' to POST { word } to your Flask backend on a stall
+};
+
+const PASSAGES = [
+  "Developmental dyslexia causes severe disruption to accurate word decoding.",
+  "Readers experience profound cognitive exhaustion when processing complex structures.",
+  "BlinkBrief delivers quiet assistance and fades support over time.",
+  "A reader who pauses on a long unfamiliar word may need a different kind of help than one who loses their place on the line."
+];
+
+const $ = s => document.querySelector(s);
+const CAL_POINTS = [[10,14],[50,14],[90,14],[10,50],[50,50],[90,50],[10,86],[50,86],[90,86]];
+
+let state = 'intro';       // intro | loading | calibrating | checking | reading
+let sx = null, sy = null;  // smoothed gaze
+let rawX = null, rawY = null;
+let lastDataAt = 0;
+let paused = false;
+
+let current = null, candidate = null, candSince = 0, lastOnWord = 0;
+let focusSince = 0, stallFired = false;
+const trail = [];
+
+/* ---------- text -> word spans ---------- */
+function renderText(paragraphs) {
+  const page = $('#page');
+  page.innerHTML = '';
+  paragraphs.forEach(text => {
+    const p = document.createElement('p');
+    p.className = 'para';
+    text.trim().split(/\s+/).forEach((tok, i, arr) => {
+      const s = document.createElement('span');
+      s.className = 'w';
+      s.textContent = tok;
+      s.dataset.clean = tok.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '');
+      p.appendChild(s);
+      if (i < arr.length - 1) p.appendChild(document.createTextNode(' '));
+    });
+    page.appendChild(p);
+  });
+  [...document.querySelectorAll('.w')].forEach((w, i) => w.dataset.i = i);
+  current = candidate = null;
+  setCurrent(null, performance.now());
+}
+
+/* ---------- WebGazer startup ---------- */
+function startCamera() {
+  setState('loading');
+  const timeout = setTimeout(() => {
+    $('#loading-msg').textContent = "Still waiting for the camera. Check that you allowed access and that no other app is using it.";
+  }, 12000);
+
+  try {
+    webgazer
+      .setRegression('ridge')
+      .setGazeListener(onGaze)
+      .showVideoPreview(true)
+      .showFaceOverlay(true)
+      .showFaceFeedbackBox(true)
+      .showPredictionPoints(false)   // we draw our own dot
+      .saveDataAcrossSessions(true)
+      .begin(() => {
+        clearTimeout(timeout);
+        $('#loading-msg').textContent = "The camera could not start. Allow camera access in your browser and reload.";
+      });
+  } catch (e) {
+    $('#loading-msg').textContent = "WebGazer did not load. Check your internet connection and reload.";
+    return;
+  }
+
+  const wait = setInterval(() => {
+    if (typeof webgazer.isReady === 'function' && webgazer.isReady()) {
+      clearInterval(wait); clearTimeout(timeout);
+      startCalibration();
+    }
+  }, 250);
+}
+
+/* ---------- calibration ---------- */
+function startCalibration() {
+  setState('calibrating');
+  document.querySelectorAll('.cal-pt').forEach(n => n.remove());
+  let done = 0;
+  CAL_POINTS.forEach(([px, py]) => {
+    const b = document.createElement('button');
+    b.className = 'cal-pt';
+    b.setAttribute('aria-label', 'Calibration point');
+    b.style.left = px + '%'; b.style.top = py + '%';
+    let clicks = 0;
+    b.addEventListener('click', () => {
+      clicks++;
+      b.style.setProperty('--p', 0.08 + 0.6 * clicks / CONFIG.clicksPerPoint);
+      if (clicks >= CONFIG.clicksPerPoint) {
+        b.classList.add('done'); done++;
+        $('#cal-count').textContent = `${done} of ${CAL_POINTS.length} points done`;
+        if (done === CAL_POINTS.length) setTimeout(startCheck, 500);
+      }
+    });
+    $('#ov-cal').appendChild(b);
+  });
+  $('#cal-count').textContent = `0 of ${CAL_POINTS.length} points done`;
+  if (webgazer.showVideoPreview) webgazer.showVideoPreview(true);
+}
+
+/* ---------- accuracy check (uncalibrated point, so it is an honest test) ---------- */
+function startCheck() {
+  setState('checking');
+  // Mouse movement would teach the model the wrong thing while you stare at the check dot.
+  if (webgazer.removeMouseEventListeners) webgazer.removeMouseEventListeners();
+  $('#check-title').textContent = 'Accuracy check';
+  $('#check-text').textContent = 'Look at the orange dot without moving your mouse.';
+  $('#check-actions').style.display = 'none';
+  const tx = innerWidth * 0.32, ty = innerHeight * 0.36;
+  const dot = $('#check-dot');
+  dot.style.left = tx + 'px'; dot.style.top = ty + 'px'; dot.style.display = 'block';
+  dot.style.zIndex = 1100;
+
+  const samples = [];
+  const t0 = performance.now();
+  const timer = setInterval(() => {
+    const t = performance.now() - t0;
+    if (t > 1200 && rawX !== null) samples.push(Math.hypot(rawX - tx, rawY - ty));
+    if (t > 3200) {
+      clearInterval(timer);
+      dot.style.display = 'none';
+      showCheckResult(samples);
+    }
+  }, 50);
+}
+
+function showCheckResult(samples) {
+  const actions = $('#check-actions');
+  actions.style.display = 'flex';
+  if (samples.length < 10) {
+    $('#check-title').textContent = 'No face found';
+    $('#check-text').textContent = 'The tracker could not see your face. Move closer, face the light, and calibrate again.';
+    return;
+  }
+  samples.sort((a, b) => a - b);
+  const median = Math.round(samples[Math.floor(samples.length / 2)]);
+  const sample = document.querySelector('.w');
+  const lineStep = sample ? parseFloat(getComputedStyle(sample.parentElement).lineHeight) : 55;
+  $('#check-title').textContent = `Typical error: about ${median} px`;
+  $('#check-text').textContent = median <= lineStep * 0.6
+    ? `Good. Lines of text here are about ${Math.round(lineStep)} px apart, so the tracker should land on the right line and usually the right word.`
+    : `That is wider than the gap between lines (about ${Math.round(lineStep)} px). Words will often be off by one. Calibrate again with your head still and good light on your face.`;
+}
+
+/* ---------- gaze handling ---------- */
+function onGaze(data) {
+  const now = performance.now();
+  if (!data) return;
+  lastDataAt = now;
+  rawX = data.x; rawY = data.y;
+  if (sx === null) { sx = data.x; sy = data.y; }
+  else {
+    sx = CONFIG.smoothing * data.x + (1 - CONFIG.smoothing) * sx;
+    sy = CONFIG.smoothing * data.y + (1 - CONFIG.smoothing) * sy;
+  }
+  const dot = $('#gaze-dot');
+  dot.style.transform = `translate(${sx}px, ${sy}px)`;
+  dot.style.left = 0; dot.style.top = 0;
+
+  if (state === 'reading' && !paused) trackWord(sx, sy, now);
+}
+
+function distToRect(x, y, r) {
+  const dx = Math.max(r.left - x, 0, x - r.right);
+  const dy = Math.max(r.top - y, 0, y - r.bottom);
+  return Math.hypot(dx, dy);
+}
+
+function trackWord(x, y, now) {
+  let best = null, bestD = Infinity, curD = Infinity;
+  for (const w of document.querySelectorAll('.w')) {
+    const d = distToRect(x, y, w.getBoundingClientRect());
+    if (w === current) curD = d;
+    if (d < bestD) { bestD = d; best = w; }
+  }
+
+  if (bestD > CONFIG.tolerancePx) {
+    candidate = null;
+    if (current && now - lastOnWord > CONFIG.leaveGraceMs) setCurrent(null, now);
+  } else {
+    const target = (current && curD <= CONFIG.tolerancePx && curD <= bestD + CONFIG.hysteresisPx) ? current : best;
+    if (target === current) { lastOnWord = now; candidate = null; }
+    else if (candidate !== target) { candidate = target; candSince = now; }
+    else if (now - candSince >= CONFIG.confirmMs) { setCurrent(target, now); lastOnWord = now; candidate = null; }
+  }
+  updateDwell(now);
+}
+
+function setCurrent(w, now) {
+  if (current) {
+    trail.unshift({ word: current.dataset.clean || current.textContent, ms: now - focusSince });
+    if (trail.length > 6) trail.pop();
+    current.classList.remove('looked', 'stalled');
+    renderTrail();
+  }
+  current = w;
+  focusSince = now;
+  stallFired = false;
+  $('#dwell-bar').classList.remove('stalled');
+  if (w) {
+    w.classList.add('looked');
+    $('#cur-word').textContent = w.dataset.clean || w.textContent;
+    $('#cur-word').classList.remove('none');
+    $('#word-idx').textContent = `word ${Number(w.dataset.i) + 1}`;
+    document.dispatchEvent(new CustomEvent('blinkbrief:wordfocus', {
+      detail: { word: w.dataset.clean || w.textContent, index: Number(w.dataset.i), element: w }
+    }));
+  } else {
+    $('#cur-word').textContent = '–';
+    $('#cur-word').classList.add('none');
+    $('#word-idx').textContent = '';
+    $('#dwell-fill').style.width = '0%';
+    $('#dwell-ms').textContent = '0.0 s';
+  }
+}
+
+function updateDwell(now) {
+  if (!current) return;
+  const ms = now - focusSince;
+  $('#dwell-fill').style.width = Math.min(100, ms / CONFIG.stallMs * 100) + '%';
+  $('#dwell-ms').textContent = (ms / 1000).toFixed(1) + ' s';
+  if (ms >= CONFIG.stallMs && !stallFired) {
+    stallFired = true;
+    current.classList.remove('looked');
+    current.classList.add('stalled');
+    $('#dwell-bar').classList.add('stalled');
+    const word = current.dataset.clean || current.textContent;
+    document.dispatchEvent(new CustomEvent('blinkbrief:stall', {
+      detail: { word, index: Number(current.dataset.i), dwellMs: ms, element: current }
+    }));
+    if (CONFIG.diagnoseUrl) {
+      fetch(CONFIG.diagnoseUrl, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ word, dwell_ms: Math.round(ms) })
+      }).catch(() => {});
+    }
+  }
+}
+
+function renderTrail() {
+  const ul = $('#trail');
+  ul.innerHTML = '';
+  if (!trail.length) { ul.innerHTML = '<li style="color:var(--muted)">Nothing yet</li>'; return; }
+  trail.forEach(t => {
+    const li = document.createElement('li');
+    li.innerHTML = '<b></b><span></span>';
+    li.firstChild.textContent = t.word;
+    li.lastChild.textContent = (t.ms / 1000).toFixed(1) + ' s';
+    ul.appendChild(li);
+  });
+}
+
+/* ---------- face-lost watchdog ---------- */
+setInterval(() => {
+  const st = $('#status');
+  if (state !== 'reading' && state !== 'checking') return;
+  if (paused) { st.textContent = 'Paused'; st.classList.remove('bad'); return; }
+  const lost = performance.now() - lastDataAt > CONFIG.noFaceMs;
+  st.textContent = lost ? "Can't see your face" : 'Tracking';
+  st.classList.toggle('bad', lost);
+}, 400);
+
+/* ---------- state + UI ---------- */
+function setState(s) {
+  state = s;
+  document.body.classList.toggle('setup', s === 'loading' || s === 'calibrating' || s === 'checking');
+  $('#ov-intro').classList.toggle('on', s === 'intro');
+  $('#ov-loading').classList.toggle('on', s === 'loading');
+  $('#ov-cal').classList.toggle('on', s === 'calibrating');
+  $('#ov-check').classList.toggle('on', s === 'checking');
+  $('#gaze-dot').style.zIndex = 2000;
+  if (s === 'calibrating' || s === 'checking' || s === 'reading') showDot($('#btn-dot').getAttribute('aria-pressed') === 'true');
+}
+
+function showDot(on) { $('#gaze-dot').style.display = on ? 'block' : 'none'; }
+
+function enterReading() {
+  setState('reading');
+  if (webgazer.showVideoPreview) webgazer.showVideoPreview(false);
+  $('#btn-cam').setAttribute('aria-pressed', 'false');
+  // After calibration, stop mouse movement from training the model; clicks on words still do.
+  if (webgazer.removeMouseEventListeners) webgazer.removeMouseEventListeners();
+  $('#status').textContent = 'Tracking';
+}
+
+function recalibrate() {
+  if (webgazer.clearData) webgazer.clearData();
+  if (webgazer.addMouseEventListeners) webgazer.addMouseEventListeners();
+  if (webgazer.showVideoPreview) webgazer.showVideoPreview(true);
+  sx = sy = null;
+  setCurrent(null, performance.now());
+  startCalibration();
+}
+
+$('#btn-start').addEventListener('click', startCamera);
+$('#btn-go').addEventListener('click', enterReading);
+$('#btn-recal').addEventListener('click', recalibrate);
+$('#btn-recal2').addEventListener('click', recalibrate);
+
+$('#btn-dot').addEventListener('click', e => {
+  const on = e.currentTarget.getAttribute('aria-pressed') !== 'true';
+  e.currentTarget.setAttribute('aria-pressed', on);
+  showDot(on);
+});
+$('#btn-cam').addEventListener('click', e => {
+  const on = e.currentTarget.getAttribute('aria-pressed') !== 'true';
+  e.currentTarget.setAttribute('aria-pressed', on);
+  if (webgazer.showVideoPreview) webgazer.showVideoPreview(on);
+});
+$('#btn-pause').addEventListener('click', e => {
+  paused = e.currentTarget.getAttribute('aria-pressed') !== 'true';
+  e.currentTarget.setAttribute('aria-pressed', paused);
+  e.currentTarget.textContent = paused ? 'Resume' : 'Pause';
+  if (paused) setCurrent(null, performance.now());
+});
+
+/* Clicking a word while looking at it teaches the tracker where your eyes are. */
+$('#page').addEventListener('click', e => {
+  if (e.target.classList.contains('w') && webgazer.recordScreenPosition) {
+    webgazer.recordScreenPosition(e.clientX, e.clientY, 'click');
+  }
+});
+
+$('#btn-custom').addEventListener('click', () => {
+  const t = $('#custom-text').value.trim();
+  if (t) renderText(t.split(/\n+/));
+});
+
+window.addEventListener('beforeunload', () => { try { webgazer.end(); } catch (_) {} });
+
+
+/* =========================================================
+   Word help: human pronunciation + meaning + example
+   - Real human recording from dictionaryapi.dev when available
+   - Falls back to the browser's built-in voice (speechSynthesis)
+   - Falls back to a small built-in glossary if offline
+   ========================================================= */
+const LOCAL_GLOSSARY = {
+  developmental: ['adjective', 'Relating to how something grows or forms over time.', 'Developmental changes in a child\u2019s language are easy to notice.'],
+  dyslexia: ['noun', 'A learning difference that makes reading and spelling harder, even for bright, hard-working people.', 'Dyslexia has nothing to do with how smart a person is.'],
+  causes: ['verb', 'Makes something happen.', 'Heavy rain causes the river to rise.'],
+  severe: ['adjective', 'Very serious or very strong.', 'The storm caused severe damage to the roof.'],
+  disruption: ['noun', 'Something that interrupts or breaks up the normal flow of things.', 'The power cut was a big disruption to our lesson.'],
+  accurate: ['adjective', 'Correct and free from mistakes.', 'Her answer was quick and accurate.'],
+  decoding: ['noun', 'Working out how written letters match the sounds of a word.', 'Decoding a long word is easier when you split it into small parts.'],
+  readers: ['noun', 'People who read.', 'Young readers often enjoy stories with pictures.'],
+  experience: ['verb', 'To go through or feel something.', 'Many people experience stress before an exam.'],
+  profound: ['adjective', 'Very deep or strong.', 'The film had a profound effect on her.'],
+  cognitive: ['adjective', 'Connected with thinking, learning and remembering.', 'Puzzles are a good way to exercise your cognitive skills.'],
+  exhaustion: ['noun', 'Extreme tiredness.', 'After the long hike she collapsed from exhaustion.'],
+  processing: ['verb', 'Dealing with information or a task step by step.', 'The computer is processing your request.'],
+  complex: ['adjective', 'Made of many parts and hard to understand.', 'The rules of the game are quite complex.'],
+  structures: ['noun', 'The way parts are put together, or things that have been built.', 'Sentences with long structures can be tiring to read.'],
+  delivers: ['verb', 'Brings or provides something.', 'The shop delivers fresh bread every morning.'],
+  quiet: ['adjective', 'Making little or no noise; calm and gentle.', 'The library is a quiet place to study.'],
+  assistance: ['noun', 'Help or support.', 'She asked the teacher for assistance with the question.'],
+  fades: ['verb', 'Slowly becomes weaker or less clear.', 'The music fades as the film ends.'],
+  support: ['noun', 'Help that makes something easier or keeps it going.', 'Good support helps new readers feel confident.'],
+  pauses: ['verb', 'Stops for a short time.', 'He pauses before he answers a hard question.'],
+  unfamiliar: ['adjective', 'Not known or not seen before.', 'The map showed an unfamiliar part of town.'],
+  different: ['adjective', 'Not the same as something else.', 'Each reader may need a different kind of help.'],
+  loses: ['verb', 'Stops having something, or cannot find it.', 'He often loses his keys.'],
+  place: ['noun', 'A particular spot or position.', 'Use your finger to keep your place on the line.'],
+  line: ['noun', 'A row of words across a page.', 'She read the first line out loud.'],
+  kind: ['noun', 'A type or sort of thing.', 'What kind of book do you like?'],
+  time: ['noun', 'The thing we measure in minutes and hours.', 'It takes time to learn a new skill.']
+};
+
+const WORD_HELP = { cache: {}, audio: null, seq: 0, current: null, voice: null };
+
+function cleanForLookup(w) {
+  return (w || '').toLowerCase().replace(/[\u2019']s$/, '').replace(/[^\p{L}\-']/gu, '');
+}
+
+async function fetchDictionary(word) {
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), 5000);
+  try {
+    const r = await fetch('https://api.dictionaryapi.dev/api/v2/entries/en/' + encodeURIComponent(word), { signal: ctl.signal });
+    if (!r.ok) return null;
+    const data = await r.json();
+    if (!Array.isArray(data) || !data.length) return null;
+    let phon = '', audio = '', pos = '', def = '', ex = '';
+    for (const e of data) {
+      if (!phon && e.phonetic) phon = e.phonetic;
+      for (const p of (e.phonetics || [])) {
+        if (!phon && p.text) phon = p.text;
+        if (!audio && p.audio) audio = p.audio.startsWith('//') ? 'https:' + p.audio : p.audio;
+      }
+    }
+    outer: for (const e of data) {
+      for (const m of (e.meanings || [])) {
+        for (const d of (m.definitions || [])) {
+          if (!def) { def = d.definition; pos = m.partOfSpeech || ''; }
+          if (d.example && (!ex || m.partOfSpeech === pos)) { if (!ex) ex = d.example; }
+        }
+        if (def && ex) break outer;
+      }
+    }
+    return def ? { phon, audio, pos, def, ex } : null;
+  } catch (_) { return null; }
+  finally { clearTimeout(t); }
+}
+
+async function getWordInfo(word) {
+  const key = cleanForLookup(word);
+  if (!key) return null;
+  if (WORD_HELP.cache[key]) return WORD_HELP.cache[key];
+  const local = LOCAL_GLOSSARY[key];
+  let info = await fetchDictionary(key);
+  if (info) {
+    if (!info.ex && local) info.ex = local[2];
+    info.source = 'dictionary';
+  } else if (local) {
+    info = { phon: '', audio: '', pos: local[0], def: local[1], ex: local[2], source: 'local' };
+  } else {
+    info = { phon: '', audio: '', pos: '', def: '', ex: '', source: 'none' };
+  }
+  WORD_HELP.cache[key] = info;
+  return info;
+}
+
+/* ----- voice ----- */
+function pickVoice() {
+  if (!('speechSynthesis' in window)) return null;
+  const vs = speechSynthesis.getVoices().filter(v => /^en/i.test(v.lang));
+  if (!vs.length) return null;
+  const prefs = [/natural|neural|online/i, /google (us|uk) english/i, /samantha|daniel|karen|serena|moira|aria|jenny|libby/i, /microsoft/i];
+  for (const re of prefs) { const v = vs.find(v => re.test(v.name)); if (v) return v; }
+  return vs.find(v => v.localService === false) || vs[0];
+}
+if ('speechSynthesis' in window) {
+  speechSynthesis.onvoiceschanged = () => { WORD_HELP.voice = pickVoice(); };
+  WORD_HELP.voice = pickVoice();
+}
+
+function stopSpeech() {
+  if (WORD_HELP.audio) { try { WORD_HELP.audio.pause(); } catch (_) {} WORD_HELP.audio = null; }
+  if ('speechSynthesis' in window) speechSynthesis.cancel();
+  $('#btn-speak').classList.remove('playing');
+}
+
+function speakWithBrowserVoice(word) {
+  if (!('speechSynthesis' in window)) return false;
+  const u = new SpeechSynthesisUtterance(word);
+  const v = WORD_HELP.voice || pickVoice();
+  if (v) { u.voice = v; u.lang = v.lang; } else { u.lang = 'en-US'; }
+  u.rate = 0.85;
+  u.onstart = () => $('#btn-speak').classList.add('playing');
+  u.onend = u.onerror = () => $('#btn-speak').classList.remove('playing');
+  speechSynthesis.speak(u);
+  return true;
+}
+
+function playPronunciation(word, info) {
+  stopSpeech();
+  if (info && info.audio) {
+    const a = new Audio(info.audio);
+    WORD_HELP.audio = a;
+    a.onplay = () => $('#btn-speak').classList.add('playing');
+    a.onended = () => $('#btn-speak').classList.remove('playing');
+    a.onerror = () => { $('#btn-speak').classList.remove('playing'); speakWithBrowserVoice(word); };
+    a.play().catch(() => speakWithBrowserVoice(word));
+  } else {
+    speakWithBrowserVoice(word);
+  }
+}
+
+/* ----- show card ----- */
+async function showWordHelp(rawWord, autoPlay) {
+  const word = (rawWord || '').trim();
+  if (!cleanForLookup(word)) return;
+  const my = ++WORD_HELP.seq;
+  $('#wh-empty').hidden = true;
+  $('#wh-body').hidden = false;
+  $('#wh-word').textContent = word;
+  $('#wh-phon').textContent = '';
+  $('#wh-pos').textContent = '';
+  $('#wh-def').textContent = 'Looking up\u2026';
+  $('#wh-ex').textContent = '';
+  $('#wh-note').textContent = '';
+  WORD_HELP.current = { word, info: null };
+
+  const info = await getWordInfo(word);
+  if (my !== WORD_HELP.seq) return;   // a newer word took over
+  WORD_HELP.current.info = info;
+
+  $('#wh-phon').textContent = info.phon || '';
+  $('#wh-pos').textContent = info.pos || '';
+  if (info.def) {
+    $('#wh-def').textContent = info.def;
+    $('#wh-ex').textContent = info.ex ? '\u201C' + info.ex + '\u201D' : 'No example found for this word.';
+    $('#wh-note').textContent = info.source === 'local' ? 'Offline mode: using the built-in word list.' : '';
+  } else {
+    $('#wh-def').textContent = 'No meaning found for this word.';
+    $('#wh-ex').textContent = '\u2013';
+    $('#wh-note').textContent = 'You can still hear how it is said.';
+  }
+  if (autoPlay) playPronunciation(word, info);
+}
+
+/* ----- wiring ----- */
+document.addEventListener('blinkbrief:stall', e => {
+  showWordHelp(e.detail.word, $('#btn-voice').getAttribute('aria-pressed') === 'true');
+});
+$('#btn-speak').addEventListener('click', () => {
+  if (WORD_HELP.current) playPronunciation(WORD_HELP.current.word, WORD_HELP.current.info);
+});
+$('#btn-voice').addEventListener('click', e => {
+  const on = e.currentTarget.getAttribute('aria-pressed') !== 'true';
+  e.currentTarget.setAttribute('aria-pressed', on);
+  if (!on) stopSpeech();
+});
+$('#page').addEventListener('dblclick', e => {
+  if (e.target.classList.contains('w')) {
+    window.getSelection().removeAllRanges();
+    showWordHelp(e.target.dataset.clean || e.target.textContent, true);
+  }
+});
+
+/* ---------- boot ---------- */
+renderText(PASSAGES);
+
+/* Hook for the rest of BlinkBrief:
+   document.addEventListener('blinkbrief:wordfocus', e => console.log(e.detail.word));
+   document.addEventListener('blinkbrief:stall',     e => console.log('stalled on', e.detail.word, e.detail.dwellMs)); */
+</script>
+</body>
+</html>

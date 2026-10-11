@@ -1,0 +1,1094 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BlinkBrief – gaze to word</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lexend:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/webgazer@3.3.0/dist/webgazer.js"></script>
+<style>
+  :root {
+    --ground: #eef1ee; --paper: #fbfcfb; --ink: #1c2a33; --muted: #5b6b75; --line: #cdd6d2;
+    --gaze: #0f766e; --gaze-wash: #c9ece6; --stall: #b45309; --stall-wash: #fde7c4;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body { font-family: 'Lexend', 'OpenDyslexic', Verdana, sans-serif; background: var(--ground); color: var(--ink); letter-spacing: 0.04em; }
+  body.setup { overflow: hidden; }
+  button { font: inherit; font-size: 15px; letter-spacing: 0.02em; padding: 10px 16px; border-radius: 8px; cursor: pointer; border: 1.5px solid var(--ink); background: transparent; color: var(--ink); }
+  button:hover { background: #e2e8e5; }
+  button:focus-visible { outline: 3px solid var(--gaze); outline-offset: 2px; }
+  button.primary { background: var(--ink); color: #fff; }
+  button.primary:hover { background: #2c4150; }
+
+  .app { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 28px; max-width: 1180px; margin: 0 auto; padding: 28px 24px 60px; }
+  @media (max-width: 860px) { .app { grid-template-columns: 1fr; } }
+  h1 { font-size: 22px; font-weight: 600; margin: 0 0 4px; }
+  .sub { color: var(--muted); font-size: 14px; margin: 0 0 22px; letter-spacing: 0.02em; }
+
+  .page { background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 26px 32px; }
+  .para { font-size: var(--fs, 28px); line-height: 2.4; margin: 0 0 24px; max-width: 62ch; }
+  .para:last-child { margin-bottom: 0; }
+  .w { padding: 3px 5px; border-radius: 5px; cursor: pointer; }
+  .w.looked { background: var(--gaze-wash); box-shadow: inset 0 -3px 0 var(--gaze); }
+  .w.stalled { background: var(--stall-wash); box-shadow: inset 0 -3px 0 var(--stall); }
+  .w.guide { background: var(--stall-wash); outline: 3px solid var(--stall); }
+  .custom { margin-top: 22px; font-size: 14px; color: var(--muted); }
+  .custom textarea { width: 100%; min-height: 90px; margin: 10px 0; padding: 10px; font: inherit; font-size: 15px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); color: var(--ink); }
+
+  .panel { position: sticky; top: 20px; align-self: start; display: flex; flex-direction: column; gap: 18px; }
+  .card { background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; }
+  .card h2 { font-size: 14px; font-weight: 500; color: var(--muted); margin: 0 0 8px; letter-spacing: 0.02em; }
+  #cur-word { font-size: 34px; font-weight: 600; min-height: 1.4em; overflow-wrap: anywhere; }
+  #cur-word.none { color: var(--line); }
+  .bar { height: 8px; background: var(--ground); border-radius: 4px; overflow: hidden; margin: 10px 0 6px; }
+  .bar > i { display: block; height: 100%; width: 0; background: var(--gaze); }
+  .bar.stalled > i { background: var(--stall); }
+  .meta { font-size: 13px; color: var(--muted); display: flex; justify-content: space-between; }
+  #status { font-size: 14px; line-height: 1.5; }
+  #status.bad { color: var(--stall); font-weight: 500; }
+  #trail { list-style: none; margin: 0; padding: 0; font-size: 15px; }
+  #trail li { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid var(--ground); }
+  #trail li:last-child { border-bottom: 0; }
+  #trail span { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .controls { display: flex; flex-wrap: wrap; gap: 8px; }
+  .controls button { padding: 8px 12px; font-size: 13px; }
+  .controls button[aria-pressed="true"] { background: var(--ink); color: #fff; }
+  .size-row { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--muted); margin-top: 12px; }
+  .size-row input { flex: 1; }
+
+  .overlay { position: fixed; inset: 0; z-index: 1000; background: rgba(238, 241, 238, 0.97); display: none; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 24px; }
+  .overlay.on { display: flex; }
+  .overlay h2 { font-size: 26px; margin: 0 0 10px; }
+  .overlay p { max-width: 50ch; line-height: 1.7; color: var(--muted); margin: 0 0 18px; }
+  .tips { text-align: left; max-width: 50ch; line-height: 1.8; color: var(--muted); font-size: 15px; margin: 0 0 22px; padding-left: 20px; }
+
+  /* calibration banner: sits above the page so it never covers a target or a word */
+  #banner { position: fixed; top: 0; left: 0; right: 0; z-index: 1200; display: none; align-items: baseline; gap: 14px; flex-wrap: wrap; padding: 12px 190px 12px 24px; background: var(--paper); border-bottom: 1px solid var(--line); min-height: 58px; }
+  body.calibrating #banner { display: flex; }
+  #b-title { font-size: 17px; font-weight: 600; }
+  #b-text { font-size: 14px; color: var(--muted); }
+  #b-count { font-size: 14px; font-variant-numeric: tabular-nums; }
+  #b-warn { font-size: 14px; color: var(--stall); font-weight: 500; }
+
+  #tgt { position: fixed; z-index: 1100; width: 26px; height: 26px; margin: -13px 0 0 -13px; border-radius: 50%; background: var(--ink); display: none; }
+  #tgt::after { content: ''; position: absolute; inset: -12px; border: 2px solid var(--gaze); border-radius: 50%; opacity: 0; }
+  #tgt.capturing::after { opacity: 1; animation: shrink 1.5s linear forwards; }
+  @keyframes shrink { from { transform: scale(1.8); } to { transform: scale(1); } }
+
+  #gaze-dot { position: fixed; left: 0; top: 0; z-index: 2000; width: 26px; height: 26px; margin: -13px 0 0 -13px; border-radius: 50%; background: rgba(15,118,110,0.3); border: 3px solid var(--gaze); box-shadow: 0 0 0 2px #fff; pointer-events: none; display: none; }
+  #gaze-dot.stale { opacity: 0.35; border-style: dashed; }
+
+  /* camera preview: top-right while setting up, bottom-right while reading */
+  #webgazerVideoContainer { position: fixed !important; z-index: 1500 !important; transform: scale(0.5); }
+  body.setup #webgazerVideoContainer { top: 12px !important; right: 12px !important; left: auto !important; bottom: auto !important; transform-origin: top right; }
+  body:not(.setup) #webgazerVideoContainer { bottom: 12px !important; right: 12px !important; left: auto !important; top: auto !important; transform-origin: bottom right; }
+
+  #ov-info { z-index: 1300; background: rgba(238, 241, 238, 0.99); }
+  #ov-pause { z-index: 1400; background: rgba(238, 241, 238, 0.99); }
+  .big-count { font-size: 56px; font-weight: 600; font-variant-numeric: tabular-nums; min-height: 1.2em; margin-bottom: 8px; }
+  #p-title { color: var(--stall); }
+  #lost-bar { position: fixed; top: 0; left: 0; right: 0; z-index: 1300; display: none; padding: 12px 24px; background: var(--stall); color: #fff; font-weight: 500; text-align: center; }
+  #lost-bar.on { display: block; }
+  .stats { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; margin: 6px 0 16px; }
+  .stat { background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 12px 18px; min-width: 130px; }
+  .stat b { display: block; font-size: 30px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .stat span { font-size: 13px; color: var(--muted); }
+  .stat small { display: block; font-size: 12px; color: var(--muted); margin-top: 4px; }
+  #result-actions { display: flex; gap: 10px; justify-content: center; }
+
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } #tgt.capturing::after { animation: none; } }
+</style>
+</head>
+<body>
+
+<div id="banner" role="status">
+  <span id="b-title"></span><span id="b-text"></span><span id="b-count"></span><span id="b-warn"></span>
+</div>
+
+<div id="ov-intro" class="overlay on">
+  <h2>BlinkBrief gaze tracker</h2>
+  <p>This page uses your webcam to estimate which word you are looking at. Video stays in your browser and is never uploaded. Setup takes about two minutes and has three parts: look at nine dots, follow a highlight across the text, then a test. Each part starts with instructions you can read at your own pace, and setup pauses by itself if the camera loses your face.</p>
+  <ul class="tips">
+    <li>Sit about an arm's length from the screen, camera at eye level.</li>
+    <li>Face a light source, not a window behind you.</li>
+    <li>Keep your head still from now until you finish reading.</li>
+    <li>Keep the browser window the same size, and use a wide window.</li>
+  </ul>
+  <button class="primary" id="btn-start">Turn on camera</button>
+</div>
+
+<div id="ov-loading" class="overlay">
+  <h2>Starting the camera</h2>
+  <p id="loading-msg">Allow camera access when your browser asks. The first start can take a few seconds.</p>
+</div>
+
+<div id="ov-dots" class="overlay"></div>
+
+<div id="ov-info" class="overlay" role="dialog" aria-live="polite">
+  <h2 id="i-title"></h2>
+  <p id="i-text"></p>
+  <ul class="tips" id="i-tips"></ul>
+  <div class="big-count" id="i-count"></div>
+  <button class="primary" id="i-btn">I'm ready</button>
+</div>
+
+<div id="ov-pause" class="overlay" role="alertdialog" aria-live="assertive">
+  <h2 id="p-title">Paused: can't see your face</h2>
+  <p id="p-text"></p>
+  <div class="big-count" id="p-count"></div>
+  <p id="p-debug" style="font-size:12px;margin:0 0 14px;"></p>
+  <div class="controls" style="justify-content:center;">
+    <button id="p-ignore">My face is in view, continue anyway</button>
+    <button id="p-restart">Start setup over</button>
+  </div>
+</div>
+
+<div id="lost-bar">Can't see your face. Tracking is paused until you are back in view.</div>
+
+<div id="ov-result" class="overlay">
+  <h2 id="r-title">Setup result</h2>
+  <div class="stats">
+    <div class="stat"><b id="r-word">–</b><span>right word</span><small id="r-word-raw"></small></div>
+    <div class="stat"><b id="r-line">–</b><span>right line</span><small id="r-line-raw"></small></div>
+    <div class="stat"><b id="r-err">–</b><span>typical error</span><small id="r-err-raw"></small></div>
+  </div>
+  <p id="r-text"></p>
+  <div id="result-actions">
+    <button id="btn-recal">Set up again</button>
+    <button id="btn-go" class="primary">Start reading</button>
+  </div>
+</div>
+
+<div id="tgt"></div>
+<div id="gaze-dot"></div>
+
+<div class="app">
+  <main>
+    <h1>Read naturally</h1>
+    <p class="sub">The word you are looking at gets a teal underline. After 2 seconds on one word it turns amber.</p>
+    <div class="page" id="page"></div>
+    <details class="custom">
+      <summary>Use your own text</summary>
+      <textarea id="custom-text" placeholder="Paste a paragraph here"></textarea>
+      <button id="btn-custom">Use this text</button>
+      <p>After changing the text or its size, press "Recalibrate" so the tracker learns the new layout.</p>
+    </details>
+  </main>
+
+  <aside class="panel">
+    <section class="card" aria-live="polite">
+      <h2>Looking at</h2>
+      <div id="cur-word" class="none">–</div>
+      <div class="bar" id="dwell-bar"><i id="dwell-fill"></i></div>
+      <div class="meta"><span id="dwell-ms">0.0 s</span><span id="word-idx"></span></div>
+    </section>
+    <section class="card">
+      <h2>Tracking</h2>
+      <div id="status">Not started</div>
+    </section>
+    <section class="card">
+      <h2>Recent words</h2>
+      <ul id="trail"><li style="color:var(--muted)">Nothing yet</li></ul>
+    </section>
+    <section class="card">
+      <h2>Controls</h2>
+      <div class="controls">
+        <button id="btn-dot" aria-pressed="true">Gaze dot</button>
+        <button id="btn-cam" aria-pressed="false">Camera</button>
+        <button id="btn-pause" aria-pressed="false">Pause</button>
+        <button id="btn-recal2">Recalibrate</button>
+      </div>
+      <label class="size-row">Text size <input type="range" id="size" min="20" max="48" value="28"><span id="size-val">28</span></label>
+      <p class="meta" style="margin:12px 0 0; display:block; line-height:1.6;">Tip: click the word you are looking at when the underline is off. After a few clicks the tracker corrects itself.</p>
+    </section>
+  </aside>
+</div>
+
+<script>
+/* =====================================================================
+   PURE LOGIC (no DOM): mapping, line grouping, word selection, evaluation
+   ===================================================================== */
+// ===PURE-START===
+const median = a => { const s = [...a].sort((x, y) => x - y); return s[Math.floor(s.length / 2)]; };
+
+const FEATURES = {
+  affine: (x, y) => [1, x, y],
+  quad: (x, y) => [1, x, y, x * x, x * y, y * y]
+};
+const nFeatures = kind => FEATURES[kind](0, 0).length;
+
+/* Ridge least squares: pts [{nx, ny, tx, ty}] (nx, ny normalised about -0.5..0.5, tx, ty in px). */
+function fit(pts, kind) {
+  const F = FEATURES[kind], n = nFeatures(kind);
+  if (pts.length < n) return null;
+  const M = Array.from({ length: n }, () => new Array(n + 2).fill(0));
+  for (const p of pts) {
+    const f = F(p.nx, p.ny);
+    for (let i = 0; i < n; i++) {
+      for (let j = 0; j < n; j++) M[i][j] += f[i] * f[j];
+      M[i][n] += f[i] * p.tx; M[i][n + 1] += f[i] * p.ty;
+    }
+  }
+  const lambda = 0.002 * pts.length;
+  for (let i = 1; i < n; i++) M[i][i] += lambda;
+  for (let c = 0; c < n; c++) {
+    let piv = c;
+    for (let r = c + 1; r < n; r++) if (Math.abs(M[r][c]) > Math.abs(M[piv][c])) piv = r;
+    if (Math.abs(M[piv][c]) < 1e-12) return null;
+    [M[c], M[piv]] = [M[piv], M[c]];
+    for (let r = 0; r < n; r++) {
+      if (r === c) continue;
+      const f = M[r][c] / M[c][c];
+      for (let k = c; k < n + 2; k++) M[r][k] -= f * M[c][k];
+    }
+  }
+  const bx = [], by = [];
+  for (let i = 0; i < n; i++) { bx.push(M[i][n] / M[i][i]); by.push(M[i][n + 1] / M[i][i]); }
+  return { kind, bx, by };
+}
+
+function predictModel(m, nx, ny) {
+  const f = FEATURES[m.kind](nx, ny);
+  let x = 0, y = 0;
+  for (let i = 0; i < f.length; i++) { x += m.bx[i] * f[i]; y += m.by[i] * f[i]; }
+  return [x, y];
+}
+
+/* Group word boxes (document order) into lines. words: [{id, left, right, top, bottom}] */
+function groupLines(words) {
+  const lines = [];
+  for (const w of words) {
+    const cy = (w.top + w.bottom) / 2, h = w.bottom - w.top;
+    const last = lines[lines.length - 1];
+    if (last && Math.abs(cy - last.cy) < h * 0.6) {
+      last.words.push(w);
+      last.cy = (last.cy * (last.words.length - 1) + cy) / last.words.length;
+    } else lines.push({ cy, words: [w] });
+  }
+  const diffs = [];
+  for (let i = 1; i < lines.length; i++) { const d = lines[i].cy - lines[i - 1].cy; if (d > 0) diffs.push(d); }
+  return { lines, gap: diffs.length ? median(diffs) : 60 };
+}
+
+function makeSelCfg(gap, tolerancePx, hysteresisPx) {
+  return { lineReach: 0.9 * gap, lineMargin: 0.25 * gap, xReach: tolerancePx, xMargin: hysteresisPx };
+}
+
+/* Pick a line first (vertical error is the big one), then the word on it by x.
+   st = { line, word } is the previous choice, used so the pick does not flicker. */
+function selectWord(L, x, y, st, cfg) {
+  if (!L.lines.length) return null;
+  let best = -1, bd = Infinity, curD = Infinity;
+  L.lines.forEach((ln, i) => {
+    const d = Math.abs(y - ln.cy);
+    if (d < bd) { bd = d; best = i; }
+    if (i === st.line) curD = d;
+  });
+  if (bd > cfg.lineReach) return null;
+  let li = best;
+  if (st.line !== null && st.line !== best && curD <= bd + cfg.lineMargin && curD <= cfg.lineReach) li = st.line;
+
+  let bw = null, bwd = Infinity, cw = null, cwd = Infinity;
+  for (const w of L.lines[li].words) {
+    const d = Math.max(w.left - x, 0, x - w.right);
+    if (d < bwd) { bwd = d; bw = w; }
+    if (w.id === st.word) { cw = w; cwd = d; }
+  }
+  if (bwd > cfg.xReach) return { line: li, word: null };
+  const word = (cw && cwd <= cfg.xReach && cwd <= bwd + cfg.xMargin) ? cw : bw;
+  return { line: li, word };
+}
+
+/* pairs: [{mx, my, tx, ty, id}] = tracker output vs where the highlighted word really was.
+   Scores raw output and two correction models using leave-one-out, so numbers are honest. */
+function evaluate(pairs, L, W, H, cfg) {
+  const toPt = p => ({ nx: p.mx / W - 0.5, ny: p.my / H - 0.5, tx: p.tx, ty: p.ty });
+  const pts = pairs.map(toPt);
+  const score = preds => {
+    let wordHit = 0, lineHit = 0; const errs = [], adx = [], ady = [];
+    pairs.forEach((p, i) => {
+      const [x, y] = preds[i];
+      errs.push(Math.hypot(x - p.tx, y - p.ty)); adx.push(Math.abs(x - p.tx)); ady.push(Math.abs(y - p.ty));
+      const sel = selectWord(L, x, y, { line: null, word: null }, cfg);
+      const tl = L.lines.findIndex(ln => ln.words.some(w => w.id === p.id));
+      if (sel) { if (sel.line === tl) lineHit++; if (sel.word && sel.word.id === p.id) wordHit++; }
+    });
+    return { err: median(errs), sigx: 1.4826 * median(adx), sigy: 1.4826 * median(ady), word: wordHit / pairs.length, line: lineHit / pairs.length };
+  };
+  const stats = { identity: score(pairs.map(p => [p.mx, p.my])) };
+  for (const kind of ['affine', 'quad']) {
+    if (pairs.length < nFeatures(kind) + 3) continue;
+    const preds = pairs.map((p, i) => {
+      const m = fit(pts.filter((_, j) => j !== i), kind);
+      return m ? predictModel(m, pts[i].nx, pts[i].ny) : [p.mx, p.my];
+    });
+    stats[kind] = score(preds);
+  }
+  let best = 'identity';
+  for (const kind of ['affine', 'quad']) {
+    if (stats[kind] && stats[kind].err < stats[best].err * 0.95) best = kind;   // must clearly help
+  }
+  return { best, stats, model: best === 'identity' ? null : fit(pts, best), toPt };
+}
+
+/* One Euro filter: smooths hard while the signal is still, and lets it through fast when it moves.
+   minCutoff (Hz) = how smooth at rest, beta = how quickly it opens up with speed. */
+function makeOneEuro(minCutoff, beta) { return { minCutoff, beta, dCutoff: 1, x: null, dx: 0, t: 0 }; }
+
+function oneEuroStep(f, v, tSec) {
+  if (f.x === null) { f.x = v; f.dx = 0; f.t = tSec; return v; }
+  const dt = Math.max(tSec - f.t, 1e-3);
+  f.t = tSec;
+  const alpha = fc => 1 / (1 + 1 / (2 * Math.PI * fc * dt));
+  f.dx += alpha(f.dCutoff) * ((v - f.x) / dt - f.dx);
+  f.x += alpha(f.minCutoff + f.beta * Math.abs(f.dx)) * (v - f.x);
+  return f.x;
+}
+
+/* ---------- reading model ----------
+   The reader is on exactly one word (never between words), and usually moves on to the next one.
+   We keep a probability for every word and, for each gaze reading, (1) move the probabilities along
+   how people read (stay, next word, skip ahead, look back), then (2) weight them by how close the
+   reading is to each word. A reading far from every word is treated as "looking away" and changes nothing. */
+const READ = {
+  rate: 2.5,                                    // chance per second of leaving the current word
+  moves: [[1, .55], [2, .14], [3, .04], [-1, .10], [-2, .04]],   // where the eyes go when they leave (sums to .87)
+  jump: .13,                                    // the rest: land anywhere (re-reading, losing the place)
+  floor: 1e-3, offText: .02, minConf: .2, stick: .7,
+  lengthBias: 0                                 // 0..1: how much longer words attract the eyes
+};
+
+function readerInit(n) {
+  const p = new Array(n).fill(n > 1 ? .6 / (n - 1) : 0);
+  if (n) p[0] = n > 1 ? .4 : 1;                 // a reader starts at the beginning
+  return { p };
+}
+
+function readerSet(R, i, mass) {                // e.g. the reader clicked a word
+  const n = R.p.length; if (!n) return;
+  const rest = (1 - mass) / Math.max(1, n - 1);
+  for (let j = 0; j < n; j++) R.p[j] = j === i ? mass : rest;
+}
+
+/* boxes ordered by reading order, sig = {x, y} expected tracker error in px. Returns {off, pick}. */
+function readerStep(R, boxes, x, y, dt, sig) {
+  const n = boxes.length;
+  if (!n || R.p.length !== n) return { off: true, pick: null };
+  const e = new Array(n);
+  let maxE = 0;
+  for (let i = 0; i < n; i++) {
+    const b = boxes[i];
+    const dx = Math.max(b.left - x, 0, x - b.right);
+    const dy = y - (b.top + b.bottom) / 2;
+    e[i] = Math.exp(-.5 * ((dx / sig.x) ** 2 + (dy / sig.y) ** 2));
+    if (e[i] > maxE) maxE = e[i];
+  }
+  if (maxE < READ.offText) return { off: true, pick: null };       // not looking at the text: leave the belief alone
+
+  // Longer words draw more attention: the eyes land on them more often and stay longer (lengthBias 0 turns this off).
+  let meanW = 0;
+  for (const b of boxes) meanW += (b.right - b.left);
+  meanW = Math.max(meanW / n, 1);
+  const wn = boxes.map(b => Math.pow(Math.max(b.right - b.left, 1) / meanW, READ.lengthBias));
+  const moveMass = READ.moves.reduce((m, mv) => m + mv[1], 0);
+  const dtc = Math.min(Math.max(dt, 0), .5);
+
+  const q = new Array(n).fill(0);
+  let jumpMass = 0;
+  for (let i = 0; i < n; i++) {
+    const pi = R.p[i];
+    if (pi < 1e-12) continue;
+    const leave = 1 - Math.exp(-READ.rate * dtc / wn[i]);          // stay longer on long words
+    q[i] += pi * (1 - leave);
+    const ws = READ.moves.map(([d, w]) => { const j = i + d; return w * (j >= 0 && j < n ? wn[j] : 1); });
+    const scale = moveMass / ws.reduce((a, v) => a + v, 0);
+    READ.moves.forEach(([d], k) => {
+      const j = i + d;
+      q[j >= 0 && j < n ? j : i] += pi * leave * ws[k] * scale;    // off either end of the text: stay
+    });
+    jumpMass += pi * leave * READ.jump;
+  }
+  const spread = jumpMass / n;
+  let sum = 0, best = 0;
+  for (let i = 0; i < n; i++) {
+    q[i] = (q[i] + spread) * (e[i] + READ.floor);
+    sum += q[i];
+  }
+  for (let i = 0; i < n; i++) { q[i] /= sum; if (q[i] > q[best]) best = i; }
+  R.p = q;
+  return { off: false, pick: best };
+}
+
+/* Decide the line first (the line holding the most probability), then the likeliest word on that line. */
+function readerDecode(R, lines) {
+  if (!lines.length) return { line: -1, pick: null };
+  let bestLine = 0, bestMass = -1;
+  lines.forEach((ln, l) => {
+    let m = 0;
+    for (const w of ln.words) m += R.p[w.id] || 0;
+    if (m > bestMass) { bestMass = m; bestLine = l; }
+  });
+  let pick = null;
+  for (const w of lines[bestLine].words) if (pick === null || R.p[w.id] > R.p[pick]) pick = w.id;
+  return { line: bestLine, pick };
+}
+// ===PURE-END===
+
+/* =====================================================================
+   PAGE LOGIC
+   ===================================================================== */
+const CONFIG = {
+  medianWindow: 1,        // 1 = use each reading as it comes. Averaging first makes the highlight lag and, in tests, picks the wrong word more often
+  filterX: { minCutoff: 6, beta: 0.05 },      // very light smoothing, just to take the jitter off the dot
+  filterY: { minCutoff: 3, beta: 0.02 },      // (the reading model does the real noise handling)
+  tolerancePx: 60,        // how far beside a word the gaze may be and still pick it
+  hysteresisPx: 14,       // current word is kept unless another is this much closer
+  confirmMs: 120,         // a new word must win this long before we switch
+  leaveGraceMs: 450,      // keep the last word this long after gaze leaves the text
+  stallMs: 2000,          // dwell on one word before it counts as a stall
+  recordEveryMs: 100,     // training sample rate while you look at a target
+  dotSettleMs: 900, dotRecordMs: 1500,
+  trainSettleMs: 250, trainRecordMs: 500,
+  testSettleMs: 350, testRecordMs: 450,
+  minVisibleWords: 12,
+  noFaceMs: 1200,
+  pauseAfterMs: 800,      // no face data for this long pauses setup
+  resumeCount: 3,         // seconds the face must stay in view before setup resumes
+  diagnoseUrl: null       // e.g. '/diagnose' to POST { word, dwell_ms } to your Flask app on a stall
+};
+
+const PASSAGES = [
+  'Developmental dyslexia causes severe disruption to accurate word decoding.',
+  'Readers experience profound cognitive exhaustion when processing complex structures.',
+  'BlinkBrief delivers quiet assistance and fades support over time.',
+  'A reader who pauses on a long unfamiliar word may need a different kind of help.'
+];
+
+const $ = s => document.querySelector(s);
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+let state = 'intro';              // intro | loading | calibrating | result | reading
+let paused = false;
+let runId = 0;
+let lastDataAt = 0;               // last time WebGazer produced a gaze prediction
+let lastFaceAt = 0;               // last time a face was seen (prediction OR green face box)
+const readLog = [];               // recent raw readings {t, x, y}
+const phaseReadings = { dots: 0, train: 0, test: 0 };
+let phaseName = 'dots';
+let gazeCount = 0, teachCount = 0, teachErrors = 0, lastTeachError = '';   // diagnostics for this setup run
+let ignoreFace = false;           // set by 'continue anyway' if face detection is wrong
+let rawX = null, rawY = null;     // median-filtered tracker output, before our correction
+let filtX = null, filtY = null, lastFilterAt = 0;
+let sx = null, sy = null;         // corrected + smoothed gaze
+const bufX = [], bufY = [];
+
+let model = null;                 // second-stage correction (null = use tracker output as is)
+let chosenKind = 'identity';
+let calPairs = [];                // tracker-vs-truth pairs, grows with your clicks
+let faceBase = null;
+
+let layout = null, selCfg = null, selState = { line: null, word: null };
+let reader = null, wordBoxes = [], lastTrackAt = 0, readSig = { x: 120, y: 120 };   // reading model (see READ)
+let wordEls = [];
+let current = null, candidate = null, candSince = 0, lastOnWord = 0;
+let focusSince = 0, stallFired = false;
+const trail = [];
+
+/* ---------- text ---------- */
+function renderText(paragraphs) {
+  const page = $('#page');
+  page.innerHTML = '';
+  paragraphs.forEach(text => {
+    const p = document.createElement('p');
+    p.className = 'para';
+    text.trim().split(/\s+/).forEach((tok, i, arr) => {
+      const s = document.createElement('span');
+      s.className = 'w';
+      s.textContent = tok;
+      s.dataset.clean = tok.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '');
+      p.appendChild(s);
+      if (i < arr.length - 1) p.appendChild(document.createTextNode(' '));
+    });
+    page.appendChild(p);
+  });
+  wordEls = [...document.querySelectorAll('.w')];
+  wordEls.forEach((w, i) => { w.dataset.i = i; });
+  current = candidate = null;
+  setCurrent(null, performance.now());
+  buildLayout();
+}
+
+function buildLayout() {
+  const words = wordEls.map((el, i) => {
+    const r = el.getBoundingClientRect();
+    return { id: i, left: r.left, right: r.right, top: r.top, bottom: r.bottom };
+  });
+  layout = groupLines(words);
+  selCfg = makeSelCfg(layout.gap, CONFIG.tolerancePx, CONFIG.hysteresisPx);
+  wordBoxes = layout.lines.flatMap(l => l.words).sort((a, b) => a.id - b.id);
+  if (!reader || reader.p.length !== wordBoxes.length) reader = readerInit(wordBoxes.length);
+}
+
+/* ---------- start ---------- */
+function startTracking() {
+  setState('loading');
+  if (typeof webgazer === 'undefined') {
+    $('#loading-msg').textContent = 'WebGazer did not load. Check your internet connection and reload.';
+    return;
+  }
+  webgazer
+    .setRegression('ridge')
+    .setGazeListener(onGaze)
+    .saveDataAcrossSessions(false)       // old sessions (other head positions) would pollute the model
+    .showVideoPreview(true)
+    .showFaceOverlay(true)
+    .showFaceFeedbackBox(true)
+    .showPredictionPoints(false)
+    .begin(() => { $('#loading-msg').textContent = 'The camera could not start. Allow camera access in your browser and reload.'; });
+
+  const wait = setInterval(() => {
+    if (typeof webgazer.isReady === 'function' && webgazer.isReady()) {
+      clearInterval(wait);
+      if (webgazer.clearData) webgazer.clearData();
+      // We train the model ourselves with known target positions; stray mouse movement would corrupt it.
+      if (webgazer.removeMouseEventListeners) webgazer.removeMouseEventListeners();
+      runCalibration();
+    }
+  }, 250);
+}
+
+/* ---------- gaze in ---------- */
+function onGaze(data) {
+  const now = performance.now();
+  if (!data) return;
+  lastDataAt = now;
+  lastFaceAt = now;
+  gazeCount++;
+  phaseReadings[phaseName]++;
+  readLog.push({ t: now, x: data.x, y: data.y });
+  if (readLog.length > 800) readLog.shift();
+  bufX.push(data.x); bufY.push(data.y);
+  if (bufX.length > CONFIG.medianWindow) { bufX.shift(); bufY.shift(); }
+  rawX = median(bufX); rawY = median(bufY);
+
+  const [cx, cy] = model
+    ? predictModel(model, rawX / innerWidth - 0.5, rawY / innerHeight - 0.5)
+    : [rawX, rawY];
+  if (sx === null || now - lastFilterAt > 1000) {              // first reading, or a long gap: start the filters fresh
+    filtX = makeOneEuro(CONFIG.filterX.minCutoff, CONFIG.filterX.beta);
+    filtY = makeOneEuro(CONFIG.filterY.minCutoff, CONFIG.filterY.beta);
+  }
+  lastFilterAt = now;
+  sx = oneEuroStep(filtX, cx, now / 1000);
+  sy = oneEuroStep(filtY, cy, now / 1000);
+  $('#gaze-dot').style.transform = `translate(${sx}px, ${sy}px)`;
+  updateDot();
+
+  if (state === 'reading' && !paused) trackWord(sx, sy, now);
+}
+
+/* WebGazer makes no predictions until it has been trained, so 'no predictions yet' must not mean 'no face'.
+   We also read the green/red outline WebGazer draws around the detected face. */
+function greenBox() {
+  const fb = document.getElementById('webgazerFaceFeedbackBox');
+  if (!fb) return false;
+  const m = getComputedStyle(fb).borderTopColor.match(/\d+(\.\d+)?/g);
+  if (!m || m.length < 3) return false;
+  const [r, g, b] = m.map(Number);
+  return g > 90 && g > r && g > b;
+}
+setInterval(() => {
+  if (state !== 'intro' && state !== 'loading' && greenBox()) lastFaceAt = performance.now();
+}, 100);
+
+const faceOk = () => ignoreFace || performance.now() - lastFaceAt < 400;
+const faceLost = () => !ignoreFace && performance.now() - lastFaceAt > CONFIG.pauseAfterMs;
+const teach = (x, y) => {
+  try { webgazer.recordScreenPosition(x, y, 'click'); teachCount++; }
+  catch (e) { teachErrors++; lastTeachError = (e && e.message) ? e.message : String(e); }
+};
+
+/* Instruction card: stays until you press the button, then counts down 3, 2, 1. Resolves false if cancelled. */
+function showInfo(run, title, text, tips) {
+  return new Promise(resolve => {
+    $('#i-title').textContent = title;
+    $('#i-text').textContent = text;
+    const ul = $('#i-tips');
+    ul.innerHTML = '';
+    tips.forEach(t => { const li = document.createElement('li'); li.textContent = t; ul.appendChild(li); });
+    $('#i-count').textContent = '';
+    const btn = $('#i-btn');
+    btn.disabled = false;
+    btn.textContent = "I'm ready";
+    $('#ov-info').classList.add('on');
+    btn.focus();
+    btn.onclick = async () => {
+      btn.disabled = true;
+      btn.textContent = 'Get ready';
+      for (let n = 3; n > 0; n--) {
+        $('#i-count').textContent = n;
+        await sleep(1000);
+        if (run !== runId) break;
+      }
+      $('#i-count').textContent = '';
+      $('#ov-info').classList.remove('on');
+      resolve(run === runId);
+    };
+  });
+}
+
+/* Blocks while the face is missing. 'ok' = no pause was needed, 'resumed' = it paused and came back, 'cancel' = setup restarted. */
+async function faceGuard(run) {
+  if (!faceLost()) return 'ok';
+  $('#ov-pause').classList.add('on');
+  $('#tgt').classList.remove('capturing');
+  let steady = false;
+  while (!steady) {
+    $('#p-text').textContent = 'Setup is paused. Move back in view of the camera and face the light. It continues by itself once your face is found.';
+    $('#p-count').textContent = '';
+    while (faceLost()) {
+      $('#p-debug').textContent = `Face outline green: ${greenBox() ? 'yes' : 'no'}   |   gaze readings: ${performance.now() - lastDataAt < 1000 ? 'yes' : 'none yet'}`;
+      await sleep(150);
+      if (run !== runId) return 'cancel';
+    }
+    $('#p-text').textContent = 'Face found. Hold still.';
+    steady = true;
+    for (let n = CONFIG.resumeCount; n > 0 && steady; n--) {
+      $('#p-count').textContent = n;
+      const t0 = performance.now();
+      while (performance.now() - t0 < 1000) {
+        await sleep(100);
+        if (run !== runId) return 'cancel';
+        if (faceLost()) { steady = false; break; }
+      }
+    }
+  }
+  bufX.length = 0; bufY.length = 0; rawX = rawY = null; sx = sy = null;   // stale readings from before the pause
+  $('#ov-pause').classList.remove('on');
+  return 'resumed';
+}
+
+/* ---------- setup, part 1: nine dots over the reading area ---------- */
+function dotTargets() {
+  const r = $('#page').getBoundingClientRect();
+  const left = Math.max(r.left, 24), right = Math.min(r.right, innerWidth - 24);
+  const top = Math.max(r.top, 90), bottom = Math.min(r.bottom, innerHeight - 40);
+  const xs = [0.1, 0.5, 0.9].map(f => left + (right - left) * f);
+  const ys = [0.12, 0.5, 0.88].map(f => top + (bottom - top) * f);
+  return ys.flatMap(y => xs.map(x => [x, y]));
+}
+
+function banner(title, text, count) {
+  $('#b-title').textContent = title;
+  $('#b-text').textContent = text;
+  $('#b-count').textContent = count || '';
+}
+
+async function phaseDots(run) {
+  const targets = dotTargets();
+  $('#ov-dots').classList.add('on');
+  const tgt = $('#tgt');
+  for (let i = 0; i < targets.length; i++) {
+    const [x, y] = targets[i];
+    tgt.style.left = x + 'px'; tgt.style.top = y + 'px'; tgt.style.display = 'block';
+    let done = false;
+    while (!done) {                                   // repeats this dot if the face was lost while recording it
+      if (await faceGuard(run) === 'cancel') return false;
+      banner('Part 1 of 3: look at the dots', 'Keep looking at each dot until its ring closes.', `Dot ${i + 1} of ${targets.length}`);
+      await sleep(CONFIG.dotSettleMs);
+      if (run !== runId) return false;
+      tgt.classList.add('capturing');
+      const t0 = performance.now();
+      done = true;
+      while (performance.now() - t0 < CONFIG.dotRecordMs) {
+        if (faceLost()) { done = false; break; }
+        if (faceOk()) teach(x, y);   // teach the model: eyes like this = this point
+        await sleep(CONFIG.recordEveryMs);
+        if (run !== runId) return false;
+      }
+      tgt.classList.remove('capturing');
+    }
+  }
+  tgt.style.display = 'none';
+  $('#ov-dots').classList.remove('on');
+  return true;
+}
+
+/* ---------- setup, parts 2 and 3: follow the highlight along real words ---------- */
+function visibleWordIndexes() {
+  const out = [];
+  wordEls.forEach((el, i) => {
+    const r = el.getBoundingClientRect();
+    if (r.top >= 70 && r.bottom <= innerHeight - 8 && r.left >= 0 && r.right <= innerWidth) out.push(i);
+  });
+  return out;
+}
+
+async function phaseGuided(run, ids, train) {
+  const out = [];
+  for (let k = 0; k < ids.length; k++) {
+    const el = wordEls[ids[k]];
+    const r = el.getBoundingClientRect();
+    const tx = r.left + r.width / 2, ty = r.top + r.height / 2;
+    el.classList.add('guide');
+    const cancel = () => { el.classList.remove('guide'); return null; };
+    let xs, ys, done = false;
+    while (!done) {                                   // repeats this word if the face was lost while recording it
+      if (await faceGuard(run) === 'cancel') return cancel();
+      banner(train ? 'Part 2 of 3: follow the highlight' : 'Part 3 of 3: test',
+             train ? 'Look at the highlighted word as it moves.' : 'Same again. Nothing is learned in this part; it only measures.',
+             `Word ${k + 1} of ${ids.length}`);
+      await sleep(train ? CONFIG.trainSettleMs : CONFIG.testSettleMs);
+      if (run !== runId) return cancel();
+
+      const t0 = performance.now(), recordMs = train ? CONFIG.trainRecordMs : CONFIG.testRecordMs;
+      done = true;
+      while (performance.now() - t0 < recordMs) {
+        if (faceLost()) { done = false; break; }
+        if (train && faceOk()) teach(tx, ty);
+        await sleep(train ? CONFIG.recordEveryMs : 50);
+        if (run !== runId) return cancel();
+      }
+      if (!train && done) {
+        const win = readLog.filter(q => q.t >= t0 && q.t <= performance.now());
+        xs = win.map(q => q.x); ys = win.map(q => q.y);
+      }
+    }
+    el.classList.remove('guide');
+    if (!train && xs && xs.length >= 2) out.push({ mx: median(xs), my: median(ys), tx, ty, id: ids[k], raw: xs.map((x, i) => [x, ys[i]]) });
+  }
+  return out;
+}
+
+async function runCalibration() {
+  const run = ++runId;
+  model = null; chosenKind = 'identity'; calPairs = []; faceBase = null;
+  sx = sy = null; bufX.length = 0; bufY.length = 0;
+  selState = { line: null, word: null };
+  setCurrent(null, performance.now());
+  gazeCount = 0; teachCount = 0; teachErrors = 0; lastTeachError = '';
+  phaseReadings.dots = phaseReadings.train = phaseReadings.test = 0; phaseName = 'dots'; readLog.length = 0;
+  try { if (webgazer.clearData) await webgazer.clearData(); } catch (_) {}
+  if (run !== runId) return;
+  if (webgazer.removeMouseEventListeners) webgazer.removeMouseEventListeners();
+  ignoreFace = false;
+  window.scrollTo(0, 0);
+  $('#ov-pause').classList.remove('on'); $('#ov-info').classList.remove('on');
+  setState('calibrating');
+  buildLayout();
+
+  if (!await showInfo(run, 'Part 1 of 3: look at the dots',
+      'Nine dots will appear one at a time across the page. This teaches the tracker how your eyes look when you look at each part of the screen.',
+      ['Look at each dot until the ring around it closes, then it moves on.',
+       'Do not click and do not move the mouse.',
+       'Keep your head still and your face in view of the camera.',
+       'If the camera loses your face, setup pauses and waits for you.'])) return;
+  if (!await phaseDots(run)) return;
+
+  const vis = visibleWordIndexes();
+  if (vis.length < CONFIG.minVisibleWords) {
+    showResult(null, `Only ${vis.length} words fit on screen. Lower the text size or zoom the browser out (Ctrl and minus), then set up again.`);
+    return;
+  }
+  const trainIds = vis.filter((_, k) => k % 2 === 0);
+  const testIds = vis.filter((_, k) => k % 2 === 1);
+
+  if (!await showInfo(run, 'Part 2 of 3: follow the highlight',
+      'A word will light up in orange and jump from word to word. This trains the tracker on the real text you will read.',
+      ['Look at the highlighted word the whole time it is lit.',
+       'It moves quickly, so follow it with your eyes only and keep your head still.',
+       'About half of the words on screen are used in this part.'])) return;
+  phaseName = 'train';
+  if (await phaseGuided(run, trainIds, true) === null) return;
+  if (!await showInfo(run, 'Part 3 of 3: the test',
+      'Same as the last part, but with the other words. Nothing is learned here. It measures how accurate the tracker is.',
+      ['Look at each highlighted word, just like before.',
+       'Stay in the same position as in Part 2.',
+       'You will see the result right after.'])) return;
+  phaseName = 'test';
+  const pairs = await phaseGuided(run, testIds, false);
+  if (pairs === null) return;
+
+  buildLayout();
+  if (pairs.length < 8) {
+    const why = gazeCount === 0
+      ? `WebGazer produced no gaze readings at all, even though the camera could see you (trained on ${teachCount} samples, ${teachErrors} errors${lastTeachError ? ': ' + lastTeachError : ''}). That is a tracker problem, not your position. Reload the page, close other tabs that use the camera, and try Chrome.`
+      : `Only ${pairs.length} of ${testIds.length} test words had gaze readings (readings per part: dots ${phaseReadings.dots}, follow ${phaseReadings.train}, test ${phaseReadings.test}; trained on ${teachCount} samples). If the test count is far below the others, readings stopped partway. Otherwise they are arriving too slowly. Close other tabs and apps, move closer, put light on your face, and set up again.`;
+    showResult(null, why);
+    return;
+  }
+  showResult(pairs);
+}
+
+const pct = v => Math.round(v * 100) + '%';
+
+function showResult(pairs, failMsg) {
+  setState('result');
+  if (!pairs) {
+    $('#r-title').textContent = 'Setup did not finish';
+    ['#r-word', '#r-line', '#r-err'].forEach(s => { $(s).textContent = '–'; });
+    ['#r-word-raw', '#r-line-raw', '#r-err-raw'].forEach(s => { $(s).textContent = ''; });
+    $('#r-text').textContent = failMsg;
+    $('#btn-go').style.display = 'none';
+    return;
+  }
+  const ev = evaluate(pairs, layout, innerWidth, innerHeight, selCfg);
+  chosenKind = ev.best;
+  calPairs = pairs.slice();
+  model = ev.model;
+
+  const s = ev.stats[ev.best], raw = ev.stats.identity;
+  const clampPx = v => Math.min(260, Math.max(40, v));
+  const resX = [], resY = [];
+  pairs.forEach(p => (p.raw || []).forEach(([rx, ry]) => {
+    const [qx, qy] = model ? predictModel(model, rx / innerWidth - 0.5, ry / innerHeight - 0.5) : [rx, ry];
+    resX.push(Math.abs(qx - p.tx)); resY.push(Math.abs(qy - p.ty));
+  }));
+  readSig = resX.length >= 20
+    ? { x: clampPx(1.4826 * median(resX) * 1.1), y: clampPx(1.4826 * median(resY) * 1.1) }   // noise of single readings, measured in the test
+    : { x: clampPx(s.sigx * 1.3), y: clampPx(s.sigy * 1.3) };
+  reader = readerInit(wordBoxes.length); lastTrackAt = 0;
+  $('#r-title').textContent = 'Setup result';
+  $('#r-word').textContent = pct(s.word);
+  $('#r-line').textContent = pct(s.line);
+  $('#r-err').textContent = Math.round(s.err) + ' px';
+  const note = ev.best === 'identity' ? '' : 'before tuning: ';
+  $('#r-word-raw').textContent = note ? note + pct(raw.word) : '';
+  $('#r-line-raw').textContent = note ? note + pct(raw.line) : '';
+  $('#r-err-raw').textContent = note ? note + Math.round(raw.err) + ' px' : '';
+
+  const gap = Math.round(layout.gap);
+  let text = `Measured on ${pairs.length} words the tracker never trained on. Lines are ${gap} px apart.`;
+  if (s.line < 0.8 || s.err > layout.gap * 0.8) {
+    const ratio = (s.err / layout.gap).toFixed(1);
+    text += ` The tracker's typical error (${Math.round(s.err)} px) is about ${ratio} times the gap between lines, so it cannot tell lines apart reliably, and a bigger text size alone will not fix that. These can lower the error: more light on your face from the front, sitting closer, keeping your head still, closing other tabs, and using Chrome. If it stays above roughly 100 px, a webcam is too coarse to separate lines of text.`;
+  } else if (s.word < 0.5) {
+    text += ' It finds the right line but often misses by a word. A bigger text size will help, or you can use it as it is.';
+  } else {
+    text += ' That is good for webcam tracking.';
+  }
+  $('#r-text').textContent = text;
+  $('#btn-go').style.display = '';
+}
+
+/* ---------- which word? ---------- */
+function trackWord(x, y, now) {
+  const dt = lastTrackAt ? (now - lastTrackAt) / 1000 : .1;
+  lastTrackAt = now;
+  const out = readerStep(reader, wordBoxes, x, y, dt, readSig);
+  let target = null;
+  if (!out.off) {
+    let pick = readerDecode(reader, layout.lines).pick;
+    if (pick === null) pick = out.pick;
+    const cur = current ? Number(current.dataset.i) : null;
+    if (cur !== null && reader.p[cur] >= READ.stick * reader.p[pick]) pick = cur;   // do not flip between near-equal words
+    if (reader.p[pick] >= READ.minConf) target = wordEls[pick];
+  }
+
+  if (!target) {
+    candidate = null;
+    if (current && now - lastOnWord > CONFIG.leaveGraceMs) setCurrent(null, now);
+  } else if (target === current) {
+    lastOnWord = now; candidate = null;
+  } else if (candidate !== target) {
+    candidate = target; candSince = now;
+  } else if (now - candSince >= CONFIG.confirmMs) {
+    setCurrent(target, now); lastOnWord = now; candidate = null;
+  }
+  updateDwell(now);
+}
+
+function setCurrent(w, now) {
+  if (current) {
+    trail.unshift({ word: current.dataset.clean || current.textContent, ms: now - focusSince });
+    if (trail.length > 6) trail.pop();
+    current.classList.remove('looked', 'stalled');
+    renderTrail();
+  }
+  current = w;
+  focusSince = now;
+  stallFired = false;
+  $('#dwell-bar').classList.remove('stalled');
+  if (w) {
+    w.classList.add('looked');
+    $('#cur-word').textContent = w.dataset.clean || w.textContent;
+    $('#cur-word').classList.remove('none');
+    $('#word-idx').textContent = `word ${Number(w.dataset.i) + 1}`;
+    document.dispatchEvent(new CustomEvent('blinkbrief:wordfocus', {
+      detail: { word: w.dataset.clean || w.textContent, index: Number(w.dataset.i), element: w }
+    }));
+  } else {
+    $('#cur-word').textContent = '–';
+    $('#cur-word').classList.add('none');
+    $('#word-idx').textContent = '';
+    $('#dwell-fill').style.width = '0%';
+    $('#dwell-ms').textContent = '0.0 s';
+  }
+}
+
+function updateDwell(now) {
+  if (!current) return;
+  const ms = now - focusSince;
+  $('#dwell-fill').style.width = Math.min(100, ms / CONFIG.stallMs * 100) + '%';
+  $('#dwell-ms').textContent = (ms / 1000).toFixed(1) + ' s';
+  if (ms >= CONFIG.stallMs && !stallFired) {
+    stallFired = true;
+    current.classList.remove('looked');
+    current.classList.add('stalled');
+    $('#dwell-bar').classList.add('stalled');
+    const word = current.dataset.clean || current.textContent;
+    document.dispatchEvent(new CustomEvent('blinkbrief:stall', {
+      detail: { word, index: Number(current.dataset.i), dwellMs: ms, element: current }
+    }));
+    if (CONFIG.diagnoseUrl) {
+      fetch(CONFIG.diagnoseUrl, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ word, dwell_ms: Math.round(ms) })
+      }).catch(() => {});
+    }
+  }
+}
+
+function renderTrail() {
+  const ul = $('#trail');
+  ul.innerHTML = '';
+  if (!trail.length) { ul.innerHTML = '<li style="color:var(--muted)">Nothing yet</li>'; return; }
+  trail.forEach(t => {
+    const li = document.createElement('li');
+    li.innerHTML = '<b></b><span></span>';
+    li.firstChild.textContent = t.word;
+    li.lastChild.textContent = (t.ms / 1000).toFixed(1) + ' s';
+    ul.appendChild(li);
+  });
+}
+
+/* ---------- click-to-correct: your clicks become extra training pairs for the correction ---------- */
+function refit() {
+  const clicks = calPairs.filter(p => p.click).length;
+  let kind = chosenKind;
+  if (kind === 'identity') { if (clicks < 5) return; kind = 'affine'; }
+  const pts = calPairs.map(p => ({ nx: p.mx / innerWidth - 0.5, ny: p.my / innerHeight - 0.5, tx: p.tx, ty: p.ty }));
+  const m = fit(pts, kind);
+  if (m) model = m;
+}
+
+$('#page').addEventListener('click', e => {
+  if (state !== 'reading' || paused || rawX === null || !e.target.classList.contains('w')) return;
+  calPairs.push({ mx: rawX, my: rawY, tx: e.clientX, ty: e.clientY, id: Number(e.target.dataset.i), click: true });
+  refit();
+  readerSet(reader, Number(e.target.dataset.i), .85);
+  flashStatus('Learned from your click');
+});
+
+/* ---------- head-movement guard (uses WebGazer's face landmarks if available) ---------- */
+function faceMetrics() {
+  try {
+    const pos = webgazer.getTracker().getPositions();
+    if (!pos || pos.length < 455) return null;
+    const nose = pos[1], l = pos[234], r = pos[454];
+    return { x: nose[0], y: nose[1], w: Math.hypot(r[0] - l[0], r[1] - l[1]) };
+  } catch (_) { return null; }
+}
+
+function headMoved() {
+  if (!faceBase) return false;
+  const m = faceMetrics();
+  if (!m || !faceBase.w) return false;
+  return Math.abs(m.x - faceBase.x) / faceBase.w > 0.15 ||
+         Math.abs(m.y - faceBase.y) / faceBase.w > 0.15 ||
+         Math.abs(m.w / faceBase.w - 1) > 0.12;
+}
+
+/* ---------- status line ---------- */
+let flashUntil = 0;
+function flashStatus(msg) { $('#status').textContent = msg; $('#status').classList.remove('bad'); flashUntil = performance.now() + 1500; }
+
+setInterval(() => {
+  const now = performance.now();
+  const lost = !ignoreFace && now - lastFaceAt > CONFIG.noFaceMs;
+  $('#b-warn').textContent = state !== 'calibrating' ? '' : lost ? "Can't see your face" : (now - lastDataAt > 3000 ? 'The camera sees you, but there are no gaze readings yet' : '');
+  $('#gaze-dot').classList.toggle('stale', now - lastDataAt > 1000);
+  $('#lost-bar').classList.toggle('on', state === 'reading' && lost && !paused);
+  if (state === 'reading' && lost && current) setCurrent(null, now);      // no stale highlight while the face is missing
+  if (state !== 'reading' || now < flashUntil) return;
+  const st = $('#status');
+  if (paused) { st.textContent = 'Paused'; st.classList.remove('bad'); return; }
+  if (lost) { st.textContent = "Can't see your face"; st.classList.add('bad'); return; }
+  if (headMoved()) { st.textContent = 'You moved. Sit where you calibrated, or press Recalibrate.'; st.classList.add('bad'); return; }
+  st.textContent = 'Tracking'; st.classList.remove('bad');
+}, 400);
+
+/* ---------- state + controls ---------- */
+function updateDot() {
+  const on = $('#btn-dot').getAttribute('aria-pressed') === 'true';
+  $('#gaze-dot').style.display = (on && sx !== null && ['calibrating', 'result', 'reading'].includes(state)) ? 'block' : 'none';
+}
+
+function setState(s) {
+  state = s;
+  document.body.classList.toggle('setup', s === 'loading' || s === 'calibrating' || s === 'result');
+  document.body.classList.toggle('calibrating', s === 'calibrating');
+  $('#ov-intro').classList.toggle('on', s === 'intro');
+  $('#ov-loading').classList.toggle('on', s === 'loading');
+  $('#ov-result').classList.toggle('on', s === 'result');
+  if (s !== 'calibrating') { $('#ov-dots').classList.remove('on'); $('#ov-info').classList.remove('on'); $('#ov-pause').classList.remove('on'); $('#tgt').style.display = 'none'; }
+  updateDot();
+}
+
+function enterReading() {
+  setState('reading');
+  buildLayout();
+  faceBase = faceMetrics();
+  if (webgazer.showVideoPreview) webgazer.showVideoPreview(false);
+  $('#btn-cam').setAttribute('aria-pressed', 'false');
+  $('#status').textContent = 'Tracking';
+}
+
+$('#btn-start').addEventListener('click', startTracking);
+$('#btn-go').addEventListener('click', enterReading);
+$('#p-ignore').addEventListener('click', () => { ignoreFace = true; });
+$('#p-restart').addEventListener('click', () => { $('#ov-pause').classList.remove('on'); $('#ov-info').classList.remove('on'); runCalibration(); });
+$('#btn-recal').addEventListener('click', () => { if (webgazer.showVideoPreview) webgazer.showVideoPreview(true); runCalibration(); });
+$('#btn-recal2').addEventListener('click', () => { if (webgazer.showVideoPreview) webgazer.showVideoPreview(true); runCalibration(); });
+
+$('#btn-dot').addEventListener('click', e => {
+  const on = e.currentTarget.getAttribute('aria-pressed') !== 'true';
+  e.currentTarget.setAttribute('aria-pressed', on);
+  updateDot();
+});
+$('#btn-cam').addEventListener('click', e => {
+  const on = e.currentTarget.getAttribute('aria-pressed') !== 'true';
+  e.currentTarget.setAttribute('aria-pressed', on);
+  if (webgazer.showVideoPreview) webgazer.showVideoPreview(on);
+});
+$('#btn-pause').addEventListener('click', e => {
+  paused = e.currentTarget.getAttribute('aria-pressed') !== 'true';
+  e.currentTarget.setAttribute('aria-pressed', paused);
+  e.currentTarget.textContent = paused ? 'Resume' : 'Pause';
+  lastTrackAt = 0;
+  if (paused) setCurrent(null, performance.now());
+});
+$('#btn-custom').addEventListener('click', () => {
+  const t = $('#custom-text').value.trim();
+  if (t) renderText(t.split(/\n+/));
+});
+$('#size').addEventListener('input', e => {
+  document.documentElement.style.setProperty('--fs', e.target.value + 'px');
+  $('#size-val').textContent = e.target.value;
+  buildLayout();
+});
+window.addEventListener('resize', buildLayout);
+window.addEventListener('scroll', buildLayout, { passive: true });
+window.addEventListener('beforeunload', () => { try { webgazer.end(); } catch (_) {} });
+
+renderText(PASSAGES);
+
+// Hooks for the rest of BlinkBrief:
+//   document.addEventListener('blinkbrief:wordfocus', e => console.log(e.detail.word));
+//   document.addEventListener('blinkbrief:stall',     e => console.log('stalled on', e.detail.word, e.detail.dwellMs));
+</script>
+</body>
+</html>
